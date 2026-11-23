@@ -114,6 +114,9 @@ label.f input{font-family:var(--display);font-size:22px;font-weight:700;text-ali
 .ex .setrow .x{color:var(--dim);font-size:13px;font-weight:600}
 .ex .sets input{text-align:center;font-family:var(--display);font-size:20px;font-weight:700;padding:7px 4px;width:100%}
 .ex .setrow.ok .sn{color:var(--amber)}
+.ex .tgt{margin-top:8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:13px}
+.ex .tgt b{font-family:var(--display);font-size:19px;color:var(--amber);letter-spacing:.02em}
+.ex .tgt span{color:var(--muted)}
 .ex .meta{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
 .pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
 .pill.cy{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}
@@ -419,6 +422,32 @@ function dayScore(k){var d=peek(k);if(!d)return 0;var cfg=state.config;
 function streak(){var k=todayKey(),c=0;if(dayScore(k)<0.5)k=addDays(k,-1);while(dayScore(k)>=0.5){c++;k=addDays(k,-1)}return c}
 function e1rm(str){var m=String(str||"").match(/(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+)/i);if(!m)return null;var w=+m[1],r=+m[2];if(!w||!r||r>20)return null;return r===1?w:w*(1+r/30)}
 function bestE1(d,exId){var sets=d&&d.workout&&d.workout.sets&&d.workout.sets[exId];if(!sets)return null;var b=null;sets.forEach(function(x){var v=e1rm(x);if(v&&(!b||v>b))b=v});return b}
+// ---------- Auto coach ----------
+// Baseline = best estimated max (Epley) from sessions before this day, last 28 days first.
+function baseE1(exId,k){var keys=Object.keys(state.days).filter(function(x){return x<k}).sort().reverse(),cut=addDays(k,-28),rec=null,all=null;
+  keys.forEach(function(x){var v=bestE1(state.days[x],exId);if(!v)return;if(!all||v>all)all=v;if(x>=cut&&(!rec||v>rec))rec=v});return rec||all}
+function repRange(sr){var m=String(sr).match(/(\d+)\s*×\s*(\d+)(?:\s*-\s*(\d+))?/);if(!m)return null;return {sets:+m[1],lo:+m[2],hi:+(m[3]||m[2])}}
+function rnd(w,step){return Math.max(step,Math.round(w/step)*step)}
+function coach(ex,k){var wk=blockWeek(k),rr=repRange(ex.sr);if(!rr||/sec|yd|jump/i.test(ex.sr+ex.n))return null;
+  var e1=baseE1(ex.id,k),step=5;
+  if(wk===0)return {note:"Baseline week: work up to a solid set of "+rr.hi+" with 2 reps left. Next week's weights come from your best set."};
+  if(!e1)return {note:"No baseline yet: pick a weight you could do "+(rr.hi+3)+" times and do "+rr.hi+". The app takes it from there."};
+  var reps=rr.hi,rir=2,sets=ex.sets,label="";
+  if(wk<=2){rir=3;label="Weeks 1-2 · leave 3 in the tank"}
+  else if(wk<=6){reps=wk%2?rr.lo:rr.hi;rir=2;label="Build · leave 2 in the tank"}
+  else if(wk===7){rir=4;sets=Math.max(2,Math.ceil(ex.sets/2));label="Deload · half the sets, easy"}
+  else if(wk<=11){if(ex.main){reps=5;sets=5;rir=wk>=10?1:2}else{rir=2}label=ex.main?"Strength · 5 × 5":"Strength block"}
+  else if(ex.main){label="Retest · work up to a hard set of 3";reps=3;sets=1;rir=0}
+  else{label="Finish strong · leave 2 in the tank"}
+  var w=rnd(e1/(1+(reps+rir)/30),step),bump="";
+  // Progression: last session, every set at your top weight hit today's reps → add weight.
+  var last=lastLogged(ex.id,k);
+  if(last&&wk!==7&&!(wk===12&&ex.main)){var top=0,ok=true,n=0;last.sets.forEach(function(x){var q=splitSet(x);if(+q.w>top)top=+q.w});
+    last.sets.forEach(function(x){var q=splitSet(x);if(+q.w===top){n++;if(!(+q.r>=reps))ok=false}});
+    var inc=ex.main&&/squat|trapdl|rdl/.test(ex.id)?10:5;
+    if(top&&ok&&n>=Math.min(2,sets)&&top+inc>w){w=top+inc;bump="Up "+inc+" lb: you hit every rep last time"}
+    else if(top&&top>w&&top<=e1/(1+(reps+rir-1)/30)){w=rnd(top,step)}}
+  return {w:w,reps:reps,sets:sets,label:bump||label,e1:Math.round(e1)}}
 function quoteFor(k){var d=Math.floor(parseKey(k).getTime()/864e5);return QUOTES[((d%QUOTES.length)+QUOTES.length)%QUOTES.length]}
 
 // ================= Render =================
@@ -584,20 +613,23 @@ function viewTrain(k){
       card.appendChild(h("div",{class:"ex cardio"},[h("div",{class:"head"},[h("h3",{text:ex.n}),h("span",{class:"sr",text:ex.sr})]),h("div",{class:"meta",text:meta}),h("div",{style:"margin-top:10px"},[entryCard(k,d,e,false)])]));
       return}
     var sets=d.workout.sets[ex.id]||[],last=lastLogged(ex.id,k),cur=bestE1(d,ex.id);
+    var cc=coach(ex,k);
     var metaKids=[h("span",{text:last?"Last: "+last.sets.join(", "):(ex.start?"Start: "+ex.start:"Find your starting weight")})];
+    var tgtEl=cc?h("div",{class:"tgt"},cc.w?[h("b",{text:cc.sets+" × "+cc.reps+" @ "+cc.w+" lb"}),h("span",{text:cc.label})]:[h("span",{text:cc.note})]):null;
     if(ex.main&&(cur||last&&last.e1))metaKids.push(h("span",{style:"color:var(--amber)",text:"Est. max "+Math.round(cur||last.e1)}));
     var grid=h("div",{class:"sets"});
-    for(var i=0;i<ex.sets;i++)(function(i){var cur=splitSet(sets[i]),prev=splitSet(last&&last.sets[i]);
+    var nSets=Math.max(ex.sets,cc&&cc.sets||0);
+    for(var i=0;i<nSets;i++)(function(i){var cur=splitSet(sets[i]),prev=splitSet(last&&last.sets[i]);if(cc&&cc.w&&i<cc.sets)prev={w:String(cc.w),r:String(cc.reps)};
       var row=h("div",{class:"setrow"+(cur.w&&cur.r?" ok":"")});
       var wi=h("input",{type:"text",inputmode:"decimal","aria-label":ex.n+" set "+(i+1)+" weight",placeholder:(prev.w||ex.start&&String(ex.start).match(/^\d+/)&&String(ex.start).match(/^\d+/)[0]||"lb")+"",value:cur.w});
       var ri=h("input",{type:"text",inputmode:"numeric","aria-label":ex.n+" set "+(i+1)+" reps",placeholder:prev.r||"reps",value:cur.r});
-      function upd(){var w=wi.value.trim(),rr=ri.value.trim(),arr=(d.workout.sets[ex.id]||[]).slice();while(arr.length<ex.sets)arr.push("");arr[i]=(w||rr)?w+"x"+rr:"";d.workout.sets[ex.id]=arr;row.classList.toggle("ok",!!(w&&rr));save()}
+      function upd(){var w=wi.value.trim(),rr=ri.value.trim(),arr=(d.workout.sets[ex.id]||[]).slice();while(arr.length<nSets)arr.push("");arr[i]=(w||rr)?w+"x"+rr:"";d.workout.sets[ex.id]=arr;row.classList.toggle("ok",!!(w&&rr));save()}
       wi.oninput=upd;ri.oninput=upd;
       row.appendChild(h("span",{class:"sn",text:String(i+1)}));row.appendChild(wi);row.appendChild(h("span",{class:"x",text:"lb ×"}));row.appendChild(ri);
       grid.appendChild(row)})(i);
-    card.appendChild(h("div",{class:"ex"},[h("div",{class:"head"},[h("h3",{text:ex.n}),h("span",{class:"sr",text:ex.sr})]),h("div",{class:"meta"},metaKids),grid]))});
+    card.appendChild(h("div",{class:"ex"},[h("div",{class:"head"},[h("h3",{text:ex.n}),h("span",{class:"sr",text:ex.sr})]),h("div",{class:"meta"},metaKids),tgtEl,grid]))});
   app.appendChild(card);
-  app.appendChild(h("div",{class:"small dim",style:"margin-top:6px",text:"Enter weight and reps for each set. Gray numbers are what you did last time."}));
+  app.appendChild(h("div",{class:"small dim",style:"margin-top:6px",text:"Gray numbers are this week's targets, set by the coach from your best recent sets. Beat the reps and next week's weight goes up on its own."}));
   app.appendChild(h("h2",{text:"Finish"}));var cap=wk<=2?10:15;
   app.appendChild(h("div",{class:"card stack"},[
     chairRow(d),
@@ -803,7 +835,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="2.6";
+var BUILD="2.7";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
