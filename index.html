@@ -343,7 +343,7 @@ var CHECKUP=[
  {id:"eye",b:"Eye exam",s:"Screens 8+ hours a day plus headaches"},
  {id:"dentist",b:"Dentist cleaning",s:"About 10 years since the last one"}
 ];
-var DEFAULT_CONFIG={liftTime:"06:30",startWeight:225,goalWeight:187,waterGoal:72,proteinGoal:190,moveGoal:30,checkup:{},
+var DEFAULT_CONFIG={liftTime:"06:30",startWeight:225,goalWeight:187,waterGoal:120,proteinGoal:190,moveGoal:30,checkup:{},
   sprint:{warm:180,work:30,rest:90,cool:240,rounds:8,mode:"treadmill",sprintSpeed:8.0,sprintIncline:3,recSpeed:3.0,warmSpeed:3.5}};
 
 // ================= State & helpers =================
@@ -384,7 +384,7 @@ function flushNow(){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;persist
 window.addEventListener("pagehide",flushNow);
 document.addEventListener("visibilitychange",function(){if(document.hidden)flushNow();else if(state.date!==todayKey()&&!state.pinned){state.date=todayKey();render()}});
 function loadLocal(){try{var raw=localStorage.getItem(STORE_KEY);if(!raw)return;var o=JSON.parse(raw);
-  if(o&&o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{})}
+  if(o&&o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});if(!state.config.w5){state.config.waterGoal=120;state.config.w5=1}}
   if(o&&o.days)state.days=o.days}catch(e){setStatus("Couldn't read saved data.",true)}}
 function exportBackup(){var data=JSON.stringify({v:2,exportedAt:new Date().toISOString(),config:state.config,days:state.days},null,1);
   var blob=new Blob([data],{type:"application/json"}),name="life-log-backup-"+todayKey()+".json",file=null;
@@ -393,7 +393,7 @@ function exportBackup(){var data=JSON.stringify({v:2,exportedAt:new Date().toISO
   var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)}
 function importBackup(file){var r=new FileReader();r.onload=function(){try{var o=JSON.parse(r.result);if(!o||!o.days)throw 0;
   Object.keys(o.days).forEach(function(k){if(/^\d{4}-\d{2}-\d{2}$/.test(k))state.days[k]=o.days[k]});
-  if(o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{})}
+  if(o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});if(!state.config.w5){state.config.waterGoal=120;state.config.w5=1}}
   persist();render();setStatus("Backup restored")}catch(e){setStatus("That file isn't a Life Log backup.",true)}};r.readAsText(file)}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
@@ -479,7 +479,7 @@ function viewToday(k){
         h("button",{class:"btn cyan",text:"+1 bottle",onclick:function(){d.water=(d.water||0)+BOTTLE;rerender()}})])]),
     h("div",{class:"row",style:"gap:6px"},(function(){var a=[],n=Math.max(Math.ceil(cfg.waterGoal/BOTTLE),Math.ceil((d.water||0)/BOTTLE));for(var i=0;i<n;i++){var f=Math.max(0,Math.min(1,((d.water||0)-i*BOTTLE)/BOTTLE));a.push(h("span",{style:"width:22px;height:34px;border-radius:6px 6px 8px 8px;border:2px solid var(--cyan);background:linear-gradient(to top,var(--cyan) "+Math.round(f*100)+"%,transparent "+Math.round(f*100)+"%);opacity:"+(f?1:.45)}))}return a})()),
     h("div",{class:"bar"},[h("i",{style:"width:"+pct+"%"})]),
-    h("div",{class:"small dim",text:"24 oz bottle. 1 by 10 AM, 2 by noon, 3 by 4 PM."})]));
+    h("div",{class:"small dim",text:"24 oz bottle. 1 by 9 AM, 2 by 11, 3 by 1 PM, 4 by 4 PM, 5 by 7 PM."})]));
 
   app.appendChild(h("h2",{text:"How you feel"}));
   app.appendChild(h("div",{class:"card stack"},[
@@ -740,7 +740,7 @@ function viewPlan(){
   var cfg=state.config,sp=cfg.sprint;
   app.appendChild(h("h2",{text:"Goals"}));
   function num(label,obj,key,id,step){return h("label",{class:"f",for:id},[label,h("input",{type:"number",id:id,inputmode:"decimal",step:step||"any",value:String(obj[key]),oninput:function(e){var v=n(e.target.value);if(v!=null&&v>=0){obj[key]=v;save()}}})])}
-  app.appendChild(h("div",{class:"card goalgrid"},[num("Start lb",cfg,"startWeight","g1"),num("Goal lb",cfg,"goalWeight","g2"),num("Water oz/day (24 per bottle)",cfg,"waterGoal","g3"),num("Protein g/day",cfg,"proteinGoal","g4"),num("Cardio min/day",cfg,"moveGoal","g5"),
+  app.appendChild(h("div",{class:"card goalgrid"},[num("Start lb",cfg,"startWeight","g1"),num("Goal lb",cfg,"goalWeight","g2"),h("label",{class:"f",for:"g3"},["Water bottles/day (24 oz)",h("input",{type:"number",id:"g3",inputmode:"decimal",step:"0.5",value:String(cfg.waterGoal/BOTTLE),oninput:function(e){var v=n(e.target.value);if(v!=null&&v>0){cfg.waterGoal=v*BOTTLE;save()}}})]),num("Protein g/day",cfg,"proteinGoal","g4"),num("Cardio min/day",cfg,"moveGoal","g5"),
     h("label",{class:"f",for:"g6"},["Default lift time",h("input",{type:"time",id:"g6",value:cfg.liftTime||"06:30",onchange:function(e){if(e.target.value){cfg.liftTime=e.target.value;save()}}})])]));
 
   app.appendChild(h("h2",{class:"cy",text:"Sprint 8 guide"}));
