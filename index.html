@@ -264,7 +264,7 @@ var QUOTES=[
 var WEEKDAY_SCHEDULE=[
  {id:"wake",t:"6:00",b:"Wake + water",s:"16-20 oz with an electrolyte packet"},
  {id:"fuel",t:"6:05",b:"Pre-gym fuel",s:"Banana or half scoop whey, White Monster on the drive"},
- {id:"gym",t:"6:30",b:"Gym",s:"Today's session in the Train tab, sauna after on lift days"},
+ {id:"gym",t:"6:30",b:"Gym",s:"Today's session in the Train tab, then 10 min hydro massage chair, sauna after on lift days"},
  {id:"breakfast",t:"8:00",b:"Breakfast + AM supplements",s:"Shake with creatine, eggs and bagel or yogurt and fruit"},
  {id:"coffee",t:"8:45",b:"Aroma Joe's, medium",s:"With food, never instead of it"},
  {id:"break10",t:"10:00",b:"Screen break",s:"Ankle pumps, stand slowly, refill water"},
@@ -441,6 +441,7 @@ function seg(count,from,val,on,colorFn){var wrap=h("div",{class:"seg"+(count===1
     if(val===nv)b.style.background=colorFn?colorFn(nv):css("--amber");wrap.appendChild(b)})(i);return wrap}
 function checkRow(i,on,fn){return h("div",{class:"check"+(on?" on":""),role:"checkbox","aria-checked":on?"true":"false",tabindex:"0",onclick:fn,onkeydown:function(e){if(e.key===" "||e.key==="Enter"){e.preventDefault();fn()}}},[
   h("span",{class:"box"}),i.t?h("span",{class:"t",text:i.t}):null,h("span",{class:"l"},[h("b",{text:i.b}),i.s?h("span",{text:i.s}):null])])}
+function chairRow(d){return checkRow({b:"Hydro massage chair · 10 min",s:"Every workout, right after you finish lifting or cardio"},!!d.checks.chair,function(){d.checks.chair=!d.checks.chair;rerender()})}
 function tile(k,v,unit,color){var vv=h("div",{class:"v"},[v,unit?h("small",{text:unit}):null]);if(color)vv.style.color=color;return h("div",{class:"tile"},[h("div",{class:"k",text:k}),vv])}
 
 // ---------- Today ----------
@@ -553,6 +554,7 @@ function viewTrain(k){
     app.appendChild(h("h2",{text:dow(k)===6?"Saturday · Active recovery":"Sunday · Rest"}));
     app.appendChild(h("div",{class:"card stack"},[
       h("div",{text:dow(k)===6?"45-60 min walk on the Eastern Trail, Gooch's Beach or Kennebunk Plains, or a pickup game. From week 4 you can add a second Sprint 8 here. Hot tub optional, 15-20 min.":"Stretch and foam roll for 10 min. Hot tub optional, 15-20 min, done by 8 PM. Weigh in on the Today tab and save a backup in Plan."}),
+      chairRow(d),
       h("button",{class:"btn block"+(d.workout.done?" on":""),text:d.workout.done?"Done":"Mark done",onclick:function(){d.workout.done=!d.workout.done;rerender()}})]));
     app.appendChild(h("h2",{class:"cy",text:"Cardio"}));app.appendChild(cardioList(k,d));return}
   var phase=wk===0?"Test week: learn the routine, find starting weights":wk<=2?"Weeks 1-2: about 70%, stop 3 reps short":wk<=6?"Weeks 3-6: add 5 lb when you top the range":wk===7?"Week 7: deload, half the sets":wk<=11?"Weeks 8-11: main lifts go 5 × 5":"Week 12: deload and retest";
@@ -583,6 +585,7 @@ function viewTrain(k){
   app.appendChild(h("div",{class:"small dim",style:"margin-top:6px",text:"Log sets as weight × reps, like 225x8."}));
   app.appendChild(h("h2",{text:"Finish"}));var cap=wk<=2?10:15;
   app.appendChild(h("div",{class:"card stack"},[
+    chairRow(d),
     w.sauna?h("div",{class:"stack"},[h("h3",{text:"Sauna · "+(wk<=2?"cap 10 min for now":"10-15 min")}),
       h("div",{class:"row"},[0,5,10,15,20].map(function(m){return h("button",{class:"btn"+(d.sauna===m?" on":""),text:m?m+" min":"Skip",onclick:function(){d.sauna=m;rerender()}})})),
       h("div",{class:"small muted",text:"Electrolyte water during and after, sit a minute before standing, don't drive until steady. Skip if you were woozy this morning."+(d.sauna>cap?" That's over today's cap.":"")})])
