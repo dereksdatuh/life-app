@@ -115,6 +115,12 @@ label.f input{font-family:var(--display);font-size:22px;font-weight:700;text-ali
 .ex .sets input{text-align:center;font-family:var(--display);font-size:20px;font-weight:700;padding:7px 4px;width:100%}
 .ex .setrow.ok .sn{color:var(--amber)}
 .ex .tgt{margin-top:8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:13px}
+.ex .exnote{margin-top:8px;font-size:14px;padding:8px 10px}
+.hist-list{padding:4px 0}
+.hist-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);font:inherit;padding:12px 14px;cursor:pointer}
+.hist-item:last-child{border-bottom:0}
+.hist-item .small{margin-top:4px;line-height:1.4}
+.aicard{background:linear-gradient(135deg,#062433,var(--surface) 70%);border-color:#0f4a63}
 .ex .tgt b{font-family:var(--display);font-size:19px;color:var(--amber);letter-spacing:.02em}
 .ex .tgt span{color:var(--muted)}
 .ex .meta{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
@@ -407,8 +413,10 @@ function syncPush(cfg,retry){var body={v:2,savedAt:new Date().toISOString(),conf
   return ghApi(cfg,"PUT",{message:"Life Log sync "+new Date().toISOString().slice(0,16),content:b64enc(JSON.stringify(body,null,1)),sha:syncSha||undefined})
   .then(function(r){if((r.status===409||r.status===422)&&!retry)return syncPull(cfg).then(function(){return syncPush(cfg,true)});if(r.status===401||r.status===403)throw new Error("auth");if(!r.ok)throw new Error("http "+r.status);return r.json()})
   .then(function(j){if(j&&j.content)syncSha=j.content.sha})}
+function coachPull(cfg){return fetch("https://api.github.com/repos/"+cfg.repo+"/contents/coach.json?t="+Date.now(),{cache:"no-store",headers:{"Authorization":"Bearer "+cfg.token,"Accept":"application/vnd.github+json"}})
+  .then(function(r){return r.ok?r.json():null}).then(function(j){if(!j||!j.content)return false;var txt=b64dec(j.content),old=lsGet("lifelog.coach");if(txt!==old){lsSet("lifelog.coach",txt);return true}return false}).catch(function(){return false})}
 function syncNow(opts){var cfg=syncCfg();if(!cfg||syncBusy)return Promise.resolve();syncBusy=true;
-  return syncPull(cfg).then(function(changed){try{localStorage.setItem(STORE_KEY,JSON.stringify({v:2,savedAt:new Date().toISOString(),config:state.config,days:state.days}))}catch(e){}
+  return Promise.all([syncPull(cfg),coachPull(cfg)]).then(function(a){return a[0]||a[1]}).then(function(changed){try{localStorage.setItem(STORE_KEY,JSON.stringify({v:2,savedAt:new Date().toISOString(),config:state.config,days:state.days}))}catch(e){}
     if(changed&&!(opts&&opts.noRender)){var ae=document.activeElement;if(!ae||!/INPUT|TEXTAREA/.test(ae.tagName))render()}return syncPush(cfg)})
   .then(function(){syncBusy=false;lsSet("lifelog.syncedAt",new Date().toISOString());lsSet("lifelog.syncErr","");setStatus("Synced")})
   .catch(function(e){syncBusy=false;var m=e&&e.message==="auth"?"Sync key was rejected. Check it in Plan.":"Couldn't sync. Saved on this phone; will retry.";lsSet("lifelog.syncErr",m);setStatus(m,true)})}
@@ -452,7 +460,13 @@ function baseE1(exId,k){var keys=Object.keys(state.days).filter(function(x){retu
   keys.forEach(function(x){var v=bestE1(state.days[x],exId);if(!v)return;if(!all||v>all)all=v;if(x>=cut&&(!rec||v>rec))rec=v});return rec||all}
 function repRange(sr){var m=String(sr).match(/(\d+)\s*×\s*(\d+)(?:\s*-\s*(\d+))?/);if(!m)return null;return {sets:+m[1],lo:+m[2],hi:+(m[3]||m[2])}}
 function rnd(w,step){return Math.max(step,Math.round(w/step)*step)}
-function coach(ex,k){var wk=blockWeek(k),rr=repRange(ex.sr);if(!rr||/sec|yd|jump/i.test(ex.sr+ex.n))return null;
+function aiPlan(){try{return JSON.parse(localStorage.getItem("lifelog.coach")||"null")}catch(e){return null}}
+function mondayOf(k){var w=dow(k);return addDays(k,w===0?-6:1-w)}
+function aiFor(k){var a=aiPlan();return a&&a.weekOf===mondayOf(k)?a:null}
+function coach(ex,k){var ai=aiFor(k),ap=ai&&ai.plan&&ai.plan[String(dow(k))]&&ai.plan[String(dow(k))][ex.id];
+  if(ap&&(ap.w||ap.note))return ap.w?{w:ap.w,reps:ap.reps,sets:ap.sets||ex.sets,label:"AI coach"+(ap.note?" · "+ap.note:""),ai:1}:{note:"AI coach: "+ap.note};
+  return coachRule(ex,k)}
+function coachRule(ex,k){var wk=blockWeek(k),rr=repRange(ex.sr);if(!rr||/sec|yd|jump/i.test(ex.sr+ex.n))return null;
   var e1=baseE1(ex.id,k),step=5;
   if(wk===0)return {note:"Baseline week: work up to a solid set of "+rr.hi+" with 2 reps left. Next week's weights come from your best set."};
   if(!e1)return {note:"No baseline yet: pick a weight you could do "+(rr.hi+3)+" times and do "+rr.hi+". The app takes it from there."};
@@ -604,6 +618,8 @@ function cardioList(k,d,filterSrc){
 
 // ---------- Train ----------
 function splitSet(v){var m=String(v||"").match(/^\s*([\d.]*)\s*[x×*]?\s*(\d*)/i);return m?{w:m[1]||"",r:m[2]||""}:{w:"",r:""}}
+function lastExNote(exId,before){var keys=Object.keys(state.days).filter(function(x){return x<before}).sort().reverse();
+  for(var i=0;i<keys.length&&i<60;i++){var w=state.days[keys[i]].workout,n=w&&w.notes&&w.notes[exId];if(n&&n.trim())return n.trim()}return ""}
 function lastLogged(exId,before){var keys=Object.keys(state.days).filter(function(x){return x<before}).sort().reverse();
   for(var i=0;i<keys.length;i++){var w=state.days[keys[i]].workout,sets=w&&w.sets&&w.sets[exId];
     if(sets&&sets.some(function(x){return x&&String(x).trim()}))return {date:keys[i],sets:sets.filter(function(x){return x&&String(x).trim()}),e1:bestE1(state.days[keys[i]],exId)}}return null}
@@ -620,6 +636,9 @@ function viewTrain(k){
       h("button",{class:"btn block"+(d.workout.done?" on":""),text:d.workout.done?"Done":"Mark done",onclick:function(){d.workout.done=!d.workout.done;rerender()}})]));
     app.appendChild(h("h2",{class:"cy",text:"Cardio"}));app.appendChild(cardioList(k,d));return}
   var phase=wk===0?"Test week: learn the routine, find starting weights":wk<=2?"Weeks 1-2: about 70%, stop 3 reps short":wk<=6?"Weeks 3-6: add 5 lb when you top the range":wk===7?"Week 7: deload, half the sets":wk<=11?"Weeks 8-11: main lifts go 5 × 5":"Week 12: deload and retest";
+  var ai=aiFor(k);
+  if(ai&&ai.summary)app.appendChild(h("div",{class:"card stack aicard",style:"margin-top:10px"},[h("div",{class:"row",style:"justify-content:space-between"},[h("span",{class:"pill cy",text:"AI coach · week of "+prettyDate(ai.weekOf,{month:"short",day:"numeric"})}),h("span",{class:"small dim",text:ai.generatedAt?"Reviewed "+prettyDate(ai.generatedAt.slice(0,10),{weekday:"short"}):""})]),
+    h("div",{text:ai.summary}),ai.focus&&ai.focus.length?h("ul",{class:"small muted",style:"margin:0;padding-left:18px"},ai.focus.map(function(f){return h("li",{text:f})})):null]));
   var doneSets=0,totalSets=0;w.ex.forEach(function(ex){if(ex.sets){totalSets+=ex.sets;(d.workout.sets[ex.id]||[]).forEach(function(x){if(x&&String(x).trim())doneSets++})}});
   app.appendChild(h("div",{class:"card stack",style:"margin-top:10px;background:linear-gradient(135deg,#2a1a05,var(--surface) 70%);border-color:#4a3410"},[
     h("div",{class:"row",style:"justify-content:space-between"},[h("span",{class:"pill",text:wk?"Week "+wk:"Test week"}),h("label",{class:"small muted",style:"display:flex;flex-direction:row;align-items:center;gap:6px;margin:0"},["Lift",h("input",{type:"time",value:liftTime(k),"aria-label":"Lift time today",style:"background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:4px 6px;font:inherit",onchange:function(e){var v=e.target.value;if(!v)return;d.liftTime=v===state.config.liftTime?undefined:v;rerender()}})])]),
@@ -651,7 +670,9 @@ function viewTrain(k){
       wi.oninput=upd;ri.oninput=upd;
       row.appendChild(h("span",{class:"sn",text:String(i+1)}));row.appendChild(wi);row.appendChild(h("span",{class:"x",text:"lb ×"}));row.appendChild(ri);
       grid.appendChild(row)})(i);
-    card.appendChild(h("div",{class:"ex"},[h("div",{class:"head"},[h("h3",{text:ex.n}),h("span",{class:"sr",text:ex.sr})]),h("div",{class:"meta"},metaKids),tgtEl,grid]))});
+    d.workout.notes=d.workout.notes||{};var lastNote=lastExNote(ex.id,k);
+    var ni=h("input",{type:"text",class:"exnote","aria-label":ex.n+" note",placeholder:lastNote?"Last note: "+lastNote:"Note (form, pain, felt easy…)",value:d.workout.notes[ex.id]||"",oninput:function(e){d.workout.notes[ex.id]=e.target.value;save()}});
+    card.appendChild(h("div",{class:"ex"},[h("div",{class:"head"},[h("h3",{text:ex.n}),h("span",{class:"sr",text:ex.sr})]),h("div",{class:"meta"},metaKids),tgtEl,grid,ni]))});
   app.appendChild(card);
   app.appendChild(h("div",{class:"small dim",style:"margin-top:6px",text:"Gray numbers are this week's targets, set by the coach from your best recent sets. Beat the reps and next week's weight goes up on its own."}));
   app.appendChild(h("h2",{text:"Finish"}));var cap=wk<=2?10:15;
@@ -661,8 +682,22 @@ function viewTrain(k){
       h("div",{class:"row"},[0,5,10,15,20].map(function(m){return h("button",{class:"btn"+(d.sauna===m?" on":""),text:m?m+" min":"Skip",onclick:function(){d.sauna=m;rerender()}})})),
       h("div",{class:"small muted",text:"Electrolyte water during and after, sit a minute before standing, don't drive until steady. Skip if you were woozy this morning."+(d.sauna>cap?" That's over today's cap.":"")})])
       :h("div",{class:"small muted",text:"No sauna on Sprint 8 day."}),
+    h("label",{class:"f",for:"wnote"},["How did it go?",h("textarea",{id:"wnote",rows:"3",placeholder:"Energy, sleep, what felt strong or off. The AI coach reads this.",oninput:function(e){d.workout.note=e.target.value;save()}},[d.workout.note||""])]),
     h("button",{class:"btn block "+(d.workout.done?"on":"amber"),text:d.workout.done?"Workout done ✓":"Mark workout done",onclick:function(){d.workout.done=!d.workout.done;if(d.workout.done)d.checks.gym=true;rerender()}})]));
+  historyList(k);
 }
+function historyList(k){var keys=Object.keys(state.days).filter(function(x){var w=state.days[x].workout;return x!==k&&w&&(w.done||w.sets&&Object.keys(w.sets).some(function(e){return (w.sets[e]||[]).some(function(v){return v&&String(v).trim()})}))}).sort().reverse();
+  app.appendChild(h("h2",{text:"Workout history"}));
+  if(!keys.length){app.appendChild(h("div",{class:"card small muted",text:"Every workout you log is saved here for good. Tap one to open it."}));return}
+  var box=h("div",{class:"card hist-list"});
+  keys.slice(0,state.histAll?400:8).forEach(function(x){var dd=state.days[x],w=WORKOUTS[dow(x)],wo=dd.workout||{},lines=[];
+    (w?w.ex:[]).forEach(function(ex){var ss=(wo.sets&&wo.sets[ex.id]||[]).filter(function(v){return v&&String(v).trim()});if(ss.length)lines.push(ex.n+": "+ss.join(", ")+(wo.notes&&wo.notes[ex.id]?" ("+wo.notes[ex.id]+")":""))});
+    Object.keys(wo.sets||{}).forEach(function(id){if(w&&w.ex.some(function(e){return e.id===id}))return;var ss=(wo.sets[id]||[]).filter(function(v){return v&&String(v).trim()});if(ss.length)lines.push(id+": "+ss.join(", "))});
+    box.appendChild(h("button",{class:"hist-item",onclick:function(){state.date=x;state.pinned=x!==todayKey();render();window.scrollTo(0,0)}},[
+      h("div",{class:"row",style:"justify-content:space-between"},[h("b",{text:prettyDate(x,{weekday:"short",month:"short",day:"numeric"})}),h("span",{class:"small",style:"color:var(--amber)",text:w?w.name:"Rest day"})]),
+      lines.length?h("div",{class:"small muted",text:lines.join(" · ")}):null,wo.note?h("div",{class:"small dim",text:"“"+wo.note+"”"}):null]))});
+  app.appendChild(box);
+  if(keys.length>8&&!state.histAll)app.appendChild(h("button",{class:"btn ghost block",style:"margin-top:8px",text:"Show all "+keys.length,onclick:function(){state.histAll=true;render()}}))}
 
 // ---------- Sprint 8 timer ----------
 var T=null;
@@ -876,7 +911,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="2.8";
+var BUILD="2.9";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
