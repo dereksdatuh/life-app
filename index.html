@@ -781,6 +781,7 @@ function viewPlan(){
     h("div",{class:"dim",text:lb?"Last backup: "+prettyDate(lb):"No backup yet."})]));
   app.appendChild(h("div",{class:"row",style:"margin-top:14px;justify-content:space-between"},[
     h("a",{href:DOC_URL,target:"_blank",rel:"noopener",style:"color:var(--amber);font-weight:700;font-size:14px",text:"Open the Life Plan doc"}),
+    h("button",{class:"btn ghost",text:"Check for update (v"+BUILD+")",onclick:function(){checkUpdate(true)}}),
     h("button",{class:"btn ghost",text:"Lock app",onclick:function(){try{localStorage.removeItem("lifelog.unlocked")}catch(e){}location.reload()}})]));
 }
 
@@ -802,7 +803,14 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
+var BUILD="2.6";
+if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
+var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
+  fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
+    if(navigator.serviceWorker&&navigator.serviceWorker.getRegistration)navigator.serviceWorker.getRegistration().then(function(g){if(g)g.update()}).catch(function(){});
+    setTimeout(function(){location.reload()},400)}else if(force){setStatus&&setStatus("You're on the latest version")}}).catch(function(){})}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkUpdate()});
+window.addEventListener("load",function(){setTimeout(checkUpdate,1500)});
 })();
 </script>
 </body></html>
