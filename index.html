@@ -442,7 +442,7 @@ function liftTime(k){var d=peek(k);return (d&&d.liftTime)||state.config.liftTime
 function fmtTime(t,ampm){var m=String(t||"").match(/^(\d{1,2}):(\d{2})/);if(!m)return t;var hh=+m[1],ap=hh>=12?"PM":"AM";hh=hh%12||12;return hh+":"+m[2]+(ampm?" "+ap:"")}
 function scheduleFor(k){if(dow(k)===0||dow(k)===6)return WEEKEND_SCHEDULE;var lt=fmtTime(liftTime(k));return WEEKDAY_SCHEDULE.map(function(i){return i.id==="gym"?Object.assign({},i,{t:lt}):i})}
 function planPct(k){var d=peek(k);if(!d)return 0;var l=scheduleFor(k);return l.filter(function(i){return d.checks&&d.checks[i.id]}).length/l.length}
-function cardioMin(d){if(!d||!d.cardio)return 0;return d.cardio.reduce(function(t,c){return t+(cardioMinutes(c)||0)},0)}
+function cardioMin(d){if(!d)return 0;var w=d.walk&&d.walk.done?(n(d.walk.min)||0):0;return w+(d.cardio||[]).reduce(function(t,c){return t+(cardioMinutes(c)||0)},0)}
 function cardioMinutes(c){if(c.kind==="sprint8"){var sp=state.config.sprint,r=n(c.rounds)||0;return r?Math.round((sp.warm+r*(sp.work+sp.rest)+sp.cool)/60):(n(c.min)||0)}
   if(c.kind==="intervals"){var R=n(c.rounds)||0,w=n(c.work)||0,rs=n(c.rest)||0;return R?Math.round(R*(w+rs)/60):(n(c.min)||0)}return n(c.min)||0}
 function cardioDist(c){if(c.kind==="walk"||c.kind==="run"){var m=n(c.min),sp=n(c.speed);return m&&sp?sp*m/60:null}
@@ -562,6 +562,8 @@ function viewToday(k){
       h("label",{class:"f",for:"protein"},["Protein (g)",h("input",{type:"number",id:"protein",inputmode:"numeric",placeholder:String(cfg.proteinGoal),value:d.protein==null?"":String(d.protein),oninput:function(e){d.protein=n(e.target.value);save()}})])]),
     h("label",{class:"f",for:"notes"},["Notes",h("textarea",{id:"notes",placeholder:"What you ate, when it hit, what helped",style:"font-family:var(--body);font-size:15px;text-align:left;font-weight:400",value:d.notes||"",oninput:function(e){d.notes=e.target.value;save()}})])]));
 
+  app.appendChild(h("h2",{class:"cy",text:(dow(k)===0||dow(k)===6)?"Daily walk":"4:30 walk"}));
+  app.appendChild(walkCard(k,d));
   app.appendChild(h("h2",{class:"cy",text:"Cardio"}));
   app.appendChild(cardioList(k,d,null));
 
@@ -578,6 +580,14 @@ function newEntry(kind,src,defaults){var e={id:uid(),kind:kind};if(src)e.src=src
   if(kind==="run"&&!defaults){e.min=20;e.speed=6.0;e.incline=1}
   if(kind==="walk"&&!defaults){e.min=20;e.speed=3.2;e.incline=5}
   if(kind==="bike"){e.min=20;e.level=8}return e}
+function walkCard(k,d){d.walk=d.walk||{};var wk=d.walk;
+  var pace=wk.min&&wk.mi?(function(){var p=wk.min/wk.mi,m=Math.floor(p),s=Math.round((p-m)*60);if(s===60){m++;s=0}return m+":"+(s<10?"0":"")+s+" /mi"})():"";
+  return h("div",{class:"card stack"},[
+    h("div",{class:"row",style:"justify-content:space-between"},[
+      h("button",{class:"btn"+(wk.done?" on":" cyan"),text:wk.done?"Walked ✓":"I walked today",onclick:function(){wk.done=!wk.done;d.checks.walk=wk.done;rerender()}}),
+      h("span",{class:"small muted",text:wk.done&&pace?pace:"From your WHOOP"})]),
+    h("div",{class:"goalgrid",style:"grid-template-columns:1fr 1fr 1fr"},[field("Time (min)",wk,"min","1"),field("Miles",wk,"mi","0.01"),field("Elevation (ft)",wk,"elev","1"),field("Avg HR",wk,"hr","1"),field("Strain",wk,"strain","0.1")]),
+    h("div",{class:"small dim",text:"Fill these in from the WHOOP walk activity. Minutes count toward your cardio ring."})])}
 function field(label,obj,key,step,ph){var id="f_"+(obj.id||"x")+"_"+key;
   return h("label",{class:"f",for:id},[label,h("input",{type:"number",id:id,inputmode:"decimal",step:step||"any",placeholder:ph||"–",value:obj[key]==null?"":String(obj[key]),
     oninput:function(e){obj[key]=n(e.target.value);save();var c=e.target.closest(".centry");if(c&&c._calc)c._calc()}})])}
@@ -911,7 +921,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="2.9";
+var BUILD="3.0";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
