@@ -343,7 +343,7 @@ var CHECKUP=[
  {id:"eye",b:"Eye exam",s:"Screens 8+ hours a day plus headaches"},
  {id:"dentist",b:"Dentist cleaning",s:"About 10 years since the last one"}
 ];
-var DEFAULT_CONFIG={startWeight:225,goalWeight:187,waterGoal:72,proteinGoal:190,moveGoal:30,checkup:{},
+var DEFAULT_CONFIG={liftTime:"06:30",startWeight:225,goalWeight:187,waterGoal:72,proteinGoal:190,moveGoal:30,checkup:{},
   sprint:{warm:180,work:30,rest:90,cool:240,rounds:8,mode:"treadmill",sprintSpeed:8.0,sprintIncline:3,recSpeed:3.0,warmSpeed:3.5}};
 
 // ================= State & helpers =================
@@ -399,7 +399,9 @@ function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 
 // ================= Derived metrics =================
-function scheduleFor(k){return (dow(k)===0||dow(k)===6)?WEEKEND_SCHEDULE:WEEKDAY_SCHEDULE}
+function liftTime(k){var d=peek(k);return (d&&d.liftTime)||state.config.liftTime||"06:30"}
+function fmtTime(t,ampm){var m=String(t||"").match(/^(\d{1,2}):(\d{2})/);if(!m)return t;var hh=+m[1],ap=hh>=12?"PM":"AM";hh=hh%12||12;return hh+":"+m[2]+(ampm?" "+ap:"")}
+function scheduleFor(k){if(dow(k)===0||dow(k)===6)return WEEKEND_SCHEDULE;var lt=fmtTime(liftTime(k));return WEEKDAY_SCHEDULE.map(function(i){return i.id==="gym"?Object.assign({},i,{t:lt}):i})}
 function planPct(k){var d=peek(k);if(!d)return 0;var l=scheduleFor(k);return l.filter(function(i){return d.checks&&d.checks[i.id]}).length/l.length}
 function cardioMin(d){if(!d||!d.cardio)return 0;return d.cardio.reduce(function(t,c){return t+(cardioMinutes(c)||0)},0)}
 function cardioMinutes(c){if(c.kind==="sprint8"){var sp=state.config.sprint,r=n(c.rounds)||0;return r?Math.round((sp.warm+r*(sp.work+sp.rest)+sp.cool)/60):(n(c.min)||0)}
@@ -562,7 +564,7 @@ function viewTrain(k){
   var phase=wk===0?"Test week: learn the routine, find starting weights":wk<=2?"Weeks 1-2: about 70%, stop 3 reps short":wk<=6?"Weeks 3-6: add 5 lb when you top the range":wk===7?"Week 7: deload, half the sets":wk<=11?"Weeks 8-11: main lifts go 5 × 5":"Week 12: deload and retest";
   var doneSets=0,totalSets=0;w.ex.forEach(function(ex){if(ex.sets){totalSets+=ex.sets;(d.workout.sets[ex.id]||[]).forEach(function(x){if(x&&String(x).trim())doneSets++})}});
   app.appendChild(h("div",{class:"card stack",style:"margin-top:10px;background:linear-gradient(135deg,#2a1a05,var(--surface) 70%);border-color:#4a3410"},[
-    h("div",{class:"row",style:"justify-content:space-between"},[h("span",{class:"pill",text:wk?"Week "+wk:"Test week"}),h("span",{class:"small muted",text:"6:30 AM"})]),
+    h("div",{class:"row",style:"justify-content:space-between"},[h("span",{class:"pill",text:wk?"Week "+wk:"Test week"}),h("label",{class:"small muted",style:"display:flex;flex-direction:row;align-items:center;gap:6px;margin:0"},["Lift",h("input",{type:"time",value:liftTime(k),"aria-label":"Lift time today",style:"background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:4px 6px;font:inherit",onchange:function(e){var v=e.target.value;if(!v)return;d.liftTime=v===state.config.liftTime?undefined:v;rerender()}})])]),
     h("div",{class:"num",style:"font-size:40px;line-height:1;text-transform:uppercase",text:w.name}),
     h("div",{class:"small muted",text:phase}),
     h("div",{class:"bar am"},[h("i",{style:"width:"+(totalSets?Math.round(doneSets/totalSets*100):0)+"%"})]),
@@ -738,7 +740,8 @@ function viewPlan(){
   var cfg=state.config,sp=cfg.sprint;
   app.appendChild(h("h2",{text:"Goals"}));
   function num(label,obj,key,id,step){return h("label",{class:"f",for:id},[label,h("input",{type:"number",id:id,inputmode:"decimal",step:step||"any",value:String(obj[key]),oninput:function(e){var v=n(e.target.value);if(v!=null&&v>=0){obj[key]=v;save()}}})])}
-  app.appendChild(h("div",{class:"card goalgrid"},[num("Start lb",cfg,"startWeight","g1"),num("Goal lb",cfg,"goalWeight","g2"),num("Water oz/day (24 per bottle)",cfg,"waterGoal","g3"),num("Protein g/day",cfg,"proteinGoal","g4"),num("Cardio min/day",cfg,"moveGoal","g5")]));
+  app.appendChild(h("div",{class:"card goalgrid"},[num("Start lb",cfg,"startWeight","g1"),num("Goal lb",cfg,"goalWeight","g2"),num("Water oz/day (24 per bottle)",cfg,"waterGoal","g3"),num("Protein g/day",cfg,"proteinGoal","g4"),num("Cardio min/day",cfg,"moveGoal","g5"),
+    h("label",{class:"f",for:"g6"},["Default lift time",h("input",{type:"time",id:"g6",value:cfg.liftTime||"06:30",onchange:function(e){if(e.target.value){cfg.liftTime=e.target.value;save()}}})])]));
 
   app.appendChild(h("h2",{class:"cy",text:"Sprint 8 guide"}));
   var g=h("div",{class:"card guide small"});
