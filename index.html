@@ -384,12 +384,36 @@ function css(v){return getComputedStyle(document.documentElement).getPropertyVal
 
 // ================= Storage =================
 function setStatus(msg,err){var el=document.getElementById("status");el.textContent=msg||"";el.className="status"+(err?" err":"")}
-function persist(){try{localStorage.setItem(STORE_KEY,JSON.stringify({v:2,savedAt:new Date().toISOString(),config:state.config,days:state.days}));setStatus("Saved")}
+function persist(){try{localStorage.setItem(STORE_KEY,JSON.stringify({v:2,savedAt:new Date().toISOString(),config:state.config,days:state.days}));setStatus("Saved");syncSoon()}
   catch(e){setStatus("Couldn't save. Phone storage may be full. Make a backup in Plan.",true)}}
-function save(){clearTimeout(saveTimer);saveTimer=setTimeout(function(){saveTimer=null;persist()},300)}
-function flushNow(){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;persist()}}
+function save(){var cd=state.days[state.date];if(cd)cd.u=Date.now();if(state.view==="plan")lsSet("lifelog.configAt",new Date().toISOString());clearTimeout(saveTimer);saveTimer=setTimeout(function(){saveTimer=null;persist()},300)}
+function flushNow(){if(saveTimer){clearTimeout(saveTimer);saveTimer=null;persist()}if(syncTimer){clearTimeout(syncTimer);syncTimer=null;syncNow()}}
+// ================= Cloud sync (private GitHub repo) =================
+var syncTimer=null,syncBusy=false,syncSha=null,SYNC_FILE="data.json";
+function syncCfg(){try{var o=JSON.parse(localStorage.getItem("lifelog.sync")||"null");return o&&o.token&&o.repo?o:null}catch(e){return null}}
+function syncSoon(){if(!syncCfg())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){syncTimer=null;syncNow()},4000)}
+function b64enc(str){return btoa(unescape(encodeURIComponent(str)))}
+function b64dec(str){return decodeURIComponent(escape(atob(String(str).replace(/\s/g,""))))}
+function ghApi(cfg,method,body){return fetch("https://api.github.com/repos/"+cfg.repo+"/contents/"+SYNC_FILE+(method==="GET"?"?t="+Date.now():""),{method:method,cache:"no-store",
+  headers:{"Authorization":"Bearer "+cfg.token,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},body:body?JSON.stringify(body):undefined})}
+function mergeRemote(o){var changed=false;if(!o||!o.days)return false;
+  Object.keys(o.days).forEach(function(k){if(!/^\d{4}-\d{2}-\d{2}$/.test(k))return;var rd=o.days[k],ld=state.days[k];
+    if(!ld||((rd.u||0)>(ld.u||0))){state.days[k]=rd;changed=true}});
+  if(o.config&&o.configAt&&o.configAt>(lsGet("lifelog.configAt")||"")){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});lsSet("lifelog.configAt",o.configAt);changed=true}
+  return changed}
+function syncPull(cfg){return ghApi(cfg,"GET").then(function(r){if(r.status===404){syncSha=null;return null}if(r.status===401||r.status===403)throw new Error("auth");if(!r.ok)throw new Error("http "+r.status);return r.json()})
+  .then(function(j){if(!j)return false;syncSha=j.sha;var o=JSON.parse(b64dec(j.content||""));return mergeRemote(o)})}
+function syncPush(cfg,retry){var body={v:2,savedAt:new Date().toISOString(),configAt:lsGet("lifelog.configAt")||"",config:state.config,days:state.days};
+  return ghApi(cfg,"PUT",{message:"Life Log sync "+new Date().toISOString().slice(0,16),content:b64enc(JSON.stringify(body,null,1)),sha:syncSha||undefined})
+  .then(function(r){if((r.status===409||r.status===422)&&!retry)return syncPull(cfg).then(function(){return syncPush(cfg,true)});if(r.status===401||r.status===403)throw new Error("auth");if(!r.ok)throw new Error("http "+r.status);return r.json()})
+  .then(function(j){if(j&&j.content)syncSha=j.content.sha})}
+function syncNow(opts){var cfg=syncCfg();if(!cfg||syncBusy)return Promise.resolve();syncBusy=true;
+  return syncPull(cfg).then(function(changed){try{localStorage.setItem(STORE_KEY,JSON.stringify({v:2,savedAt:new Date().toISOString(),config:state.config,days:state.days}))}catch(e){}
+    if(changed&&!(opts&&opts.noRender)){var ae=document.activeElement;if(!ae||!/INPUT|TEXTAREA/.test(ae.tagName))render()}return syncPush(cfg)})
+  .then(function(){syncBusy=false;lsSet("lifelog.syncedAt",new Date().toISOString());lsSet("lifelog.syncErr","");setStatus("Synced")})
+  .catch(function(e){syncBusy=false;var m=e&&e.message==="auth"?"Sync key was rejected. Check it in Plan.":"Couldn't sync. Saved on this phone; will retry.";lsSet("lifelog.syncErr",m);setStatus(m,true)})}
 window.addEventListener("pagehide",flushNow);
-document.addEventListener("visibilitychange",function(){if(document.hidden)flushNow();else if(state.date!==todayKey()&&!state.pinned){state.date=todayKey();render()}});
+document.addEventListener("visibilitychange",function(){if(document.hidden)flushNow();else{if(state.date!==todayKey()&&!state.pinned){state.date=todayKey();render()}syncNow()}});
 function loadLocal(){try{var raw=localStorage.getItem(STORE_KEY);if(!raw)return;var o=JSON.parse(raw);
   if(o&&o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});if(!state.config.w5){state.config.waterGoal=120;state.config.w5=1}}
   if(o&&o.days)state.days=o.days}catch(e){setStatus("Couldn't read saved data.",true)}}
@@ -805,10 +829,27 @@ function viewPlan(){
   app.appendChild(h("div",{class:"card stack small"},[h("div",{text:"Woozy on standing: sit back down, squeeze your thighs and glutes, then stand again slowly."}),
     h("div",{text:"The detached \"realization of my body\" feeling: grip something solid, name three things you see, breathe in for 4 and out for 6-8. It's anxiety, and it passes."}),h("div",{text:"Don't drive until it has fully cleared."})]));
   app.appendChild(h("div",{class:"card alert stack small",style:"margin-top:10px"},[h("h3",{text:"Get seen the same day if"}),h("div",{text:"You faint, have chest pain, your heart keeps racing after you sit, your vision doesn't clear within a minute, you get the worst headache of your life, numbness, weakness or slurred speech, or you lose time or awareness."})]));
+  app.appendChild(h("h2",{class:"cy",text:"Cloud sync"}));
+  var sc=syncCfg(),sAt=lsGet("lifelog.syncedAt"),sErr=lsGet("lifelog.syncErr");
+  if(sc){app.appendChild(h("div",{class:"card stack small"},[
+    h("div",{},[h("b",{style:"color:var(--green,#36d98a)",text:"● Connected"}),h("span",{class:"muted",text:"  to private repo "+sc.repo})]),
+    h("div",{class:sErr?"":"dim",style:sErr?"color:#ff6b6b":"",text:sErr||(sAt?"Last synced "+new Date(sAt).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"}):"Not synced yet")}),
+    h("div",{class:"dim",text:"Every change saves to your phone and syncs a few seconds later. Open the app on a new phone, paste the same key, and everything comes back."}),
+    h("div",{class:"row"},[h("button",{class:"btn cyan",text:"Sync now",onclick:function(){setStatus("Syncing…");syncNow().then(render)}}),
+      h("button",{class:"btn ghost",text:"Disconnect",onclick:function(){try{localStorage.removeItem("lifelog.sync")}catch(e){}render()}})])]))}
+  else{var ti=h("input",{type:"password",id:"synctok",placeholder:"github_pat_…",autocomplete:"off",autocapitalize:"none",spellcheck:"false"});
+    var ri=h("input",{type:"text",id:"syncrepo",value:"dereksdatuh/life-data",autocapitalize:"none",spellcheck:"false"});
+    app.appendChild(h("div",{class:"card stack small"},[
+      h("div",{text:"Back up every log to your private GitHub repo automatically. Paste your key once; it stays on this phone."}),
+      h("label",{class:"f",for:"syncrepo"},["Private repo",ri]),h("label",{class:"f",for:"synctok"},["Key",ti]),
+      h("button",{class:"btn cyan block",text:"Connect",onclick:function(){var t=ti.value.trim(),rp=ri.value.trim().replace(/^https?:\/\/github.com\//,"").replace(/\/$/,"");
+        if(!t||!/^[\w.-]+\/[\w.-]+$/.test(rp)){setStatus("Enter the repo and key.",true);return}
+        lsSet("lifelog.sync",JSON.stringify({repo:rp,token:t}));setStatus("Connecting…");syncSha=null;syncNow().then(render)}})]))}
+
   app.appendChild(h("h2",{text:"Backup"}));
   var fi=h("input",{type:"file",accept:"application/json,.json",id:"restore",style:"display:none",onchange:function(e){if(e.target.files[0])importBackup(e.target.files[0])}});
   var lb=lsGet("lifelog.lastBackup");
-  app.appendChild(h("div",{class:"card stack small"},[h("div",{text:"Your logs live only on this phone. Save a backup to Files or iCloud Drive every Sunday."}),
+  app.appendChild(h("div",{class:"card stack small"},[h("div",{text:(syncCfg()?"Cloud sync is on. A file backup is optional, once a month is plenty.":"Your logs live only on this phone. Save a backup to Files or iCloud Drive every Sunday.")}),
     h("div",{class:"row"},[h("button",{class:"btn amber",text:"Save backup",onclick:function(){exportBackup();lsSet("lifelog.lastBackup",todayKey());render()}}),h("button",{class:"btn",text:"Restore",onclick:function(){fi.click()}}),fi]),
     h("div",{class:"dim",text:lb?"Last backup: "+prettyDate(lb):"No backup yet."})]));
   app.appendChild(h("div",{class:"row",style:"margin-top:14px;justify-content:space-between"},[
@@ -833,9 +874,9 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
       else{document.getElementById("lockErr").textContent="Wrong password. Try again.";document.getElementById("pass").select()}})})})();
 
 // ================= Boot =================
-loadLocal();render();
+loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="2.7";
+var BUILD="2.8";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
