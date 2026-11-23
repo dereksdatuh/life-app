@@ -430,10 +430,13 @@ function exportBackup(){var data=JSON.stringify({v:2,exportedAt:new Date().toISO
   try{file=new File([blob],name,{type:"application/json"})}catch(e){}
   if(file&&navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:"Life Log backup"}).catch(function(){});return}
   var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)}
-function importBackup(file){var r=new FileReader();r.onload=function(){try{var o=JSON.parse(r.result);if(!o||!o.days)throw 0;
+function importText(txt){try{var o=JSON.parse(String(txt).trim());if(!o||!o.days)throw 0;applyBackup(o)}catch(e){setStatus("That isn't a Life Log backup.",true)}}
+function importBackup(file){var r=new FileReader();r.onload=function(){importText(r.result)};r.readAsText(file)}
+function applyBackup(o){{
   Object.keys(o.days).forEach(function(k){if(/^\d{4}-\d{2}-\d{2}$/.test(k))state.days[k]=o.days[k]});
   if(o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});if(!state.config.w5){state.config.waterGoal=120;state.config.w5=1}}
-  persist();render();setStatus("Backup restored")}catch(e){setStatus("That file isn't a Life Log backup.",true)}};r.readAsText(file)}
+  Object.keys(o.days).forEach(function(k){if(state.days[k])state.days[k].u=Date.now()});persist();render();setStatus("Backup restored ✓");try{alertBox("Restored "+Object.keys(o.days).length+" days")}catch(e){}}}
+function alertBox(m){var el=document.getElementById("status");el.textContent=m;el.className="status"}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 
@@ -892,10 +895,13 @@ function viewPlan(){
         lsSet("lifelog.sync",JSON.stringify({repo:rp,token:t}));setStatus("Connecting…");syncSha=null;syncNow().then(render)}})]))}
 
   app.appendChild(h("h2",{text:"Backup"}));
-  var fi=h("input",{type:"file",accept:"application/json,.json",id:"restore",style:"display:none",onchange:function(e){if(e.target.files[0])importBackup(e.target.files[0])}});
+  var fi=h("input",{type:"file",id:"restore",style:"display:none",onchange:function(e){if(e.target.files[0])importBackup(e.target.files[0])}});
   var lb=lsGet("lifelog.lastBackup");
   app.appendChild(h("div",{class:"card stack small"},[h("div",{text:(syncCfg()?"Cloud sync is on. A file backup is optional, once a month is plenty.":"Your logs live only on this phone. Save a backup to Files or iCloud Drive every Sunday.")}),
-    h("div",{class:"row"},[h("button",{class:"btn amber",text:"Save backup",onclick:function(){exportBackup();lsSet("lifelog.lastBackup",todayKey());render()}}),h("button",{class:"btn",text:"Restore",onclick:function(){fi.click()}}),fi]),
+    h("div",{class:"row"},[h("button",{class:"btn amber",text:"Save backup",onclick:function(){exportBackup();lsSet("lifelog.lastBackup",todayKey());render()}}),h("button",{class:"btn",text:"Restore file",onclick:function(){fi.click()}}),fi]),
+    h("details",{},[h("summary",{class:"small",style:"cursor:pointer;color:var(--cyan);font-weight:700",text:"Or paste a backup"}),
+      h("textarea",{id:"pastebk",rows:"4",placeholder:"Paste the backup text here",style:"margin-top:8px;font-size:12px;font-family:monospace"}),
+      h("button",{class:"btn cyan block",style:"margin-top:8px",text:"Restore pasted backup",onclick:function(){importText(document.getElementById("pastebk").value)}})]),
     h("div",{class:"dim",text:lb?"Last backup: "+prettyDate(lb):"No backup yet."})]));
   app.appendChild(h("div",{class:"row",style:"margin-top:14px;justify-content:space-between"},[
     h("a",{href:DOC_URL,target:"_blank",rel:"noopener",style:"color:var(--amber);font-weight:700;font-size:14px",text:"Open the Life Plan doc"}),
@@ -921,7 +927,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="3.0";
+var BUILD="3.1";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
