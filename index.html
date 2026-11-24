@@ -744,10 +744,16 @@ function viewTrain(k){
       h("div",{class:"row"},[0,5,10,15,20].map(function(m){return h("button",{class:"btn"+(d.sauna===m?" on":""),text:m?m+" min":"Skip",onclick:function(){d.sauna=m;rerender()}})})),
       h("div",{class:"small muted",text:"Electrolyte water during and after, sit a minute before standing, don't drive until steady. Skip if you were woozy this morning."+(d.sauna>cap?" That's over today's cap.":"")})])
       :h("div",{class:"small muted",text:"No sauna on Sprint 8 day."}),
+    whoopCard(d),
     h("label",{class:"f",for:"wnote"},["How did it go?",h("textarea",{id:"wnote",rows:"3",placeholder:"Energy, sleep, what felt strong or off. The AI coach reads this.",oninput:function(e){d.workout.note=e.target.value;save()}},[d.workout.note||""])]),
     h("button",{class:"btn block "+(d.workout.done?"on":"amber"),text:d.workout.done?"Workout done ✓":"Mark workout done",onclick:function(){d.workout.done=!d.workout.done;if(d.workout.done)d.checks.gym=true;rerender()}})]));
   historyList(k);
 }
+function whoopCard(d){d.workout.whoop=d.workout.whoop||{};var wh=d.workout.whoop;
+  return h("div",{class:"stack"},[h("div",{class:"row",style:"justify-content:space-between"},[h("h3",{text:"WHOOP for this workout"}),h("span",{class:"small muted",text:"Optional"})]),
+    h("div",{class:"goalgrid",style:"grid-template-columns:1fr 1fr 1fr"},[field("Strain",wh,"strain","0.1"),field("Avg HR",wh,"hr","1"),field("Max HR",wh,"max","1"),field("Calories",wh,"cal","1"),field("Time (min)",wh,"min","1"),field("Muscular %",wh,"musc","1")]),
+    h("div",{class:"small dim",text:"Copy these from the WHOOP activity after you lift. The AI coach reads them."})])}
+function whoopLine(wo){var wh=wo&&wo.whoop;if(!wh||!n(wh.strain))return "";return "WHOOP "+wh.strain+" strain"+(n(wh.hr)?" · avg HR "+wh.hr:"")+(n(wh.max)?" · max "+wh.max:"")+(n(wh.cal)?" · "+wh.cal+" cal":"")}
 function historyList(k){var keys=Object.keys(state.days).filter(function(x){var w=state.days[x].workout;return x!==k&&w&&(w.done||w.sets&&Object.keys(w.sets).some(function(e){return (w.sets[e]||[]).some(function(v){return v&&String(v).trim()})}))}).sort().reverse();
   app.appendChild(h("h2",{text:"Workout history"}));
   if(!keys.length){app.appendChild(h("div",{class:"card small muted",text:"Every workout you log is saved here for good. Tap one to open it."}));return}
@@ -757,7 +763,7 @@ function historyList(k){var keys=Object.keys(state.days).filter(function(x){var 
     Object.keys(wo.sets||{}).forEach(function(id){if(w&&w.ex.some(function(e){return e.id===id}))return;var ss=(wo.sets[id]||[]).filter(function(v){return v&&String(v).trim()});if(ss.length)lines.push(id+": "+ss.join(", "))});
     box.appendChild(h("button",{class:"hist-item",onclick:function(){state.date=x;state.pinned=x!==todayKey();render();window.scrollTo(0,0)}},[
       h("div",{class:"row",style:"justify-content:space-between"},[h("b",{text:prettyDate(x,{weekday:"short",month:"short",day:"numeric"})}),h("span",{class:"small",style:"color:var(--amber)",text:w?w.name:"Rest day"})]),
-      lines.length?h("div",{class:"small muted",text:lines.join(" · ")}):null,wo.note?h("div",{class:"small dim",text:"“"+wo.note+"”"}):null]))});
+      lines.length?h("div",{class:"small muted",text:lines.join(" · ")}):null,whoopLine(wo)?h("div",{class:"small",style:"color:var(--cyan)",text:whoopLine(wo)}):null,wo.note?h("div",{class:"small dim",text:"“"+wo.note+"”"}):null]))});
   app.appendChild(box);
   if(keys.length>8&&!state.histAll)app.appendChild(h("button",{class:"btn ghost block",style:"margin-top:8px",text:"Show all "+keys.length,onclick:function(){state.histAll=true;render()}}))}
 
@@ -980,7 +986,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="3.3";
+var BUILD="3.4";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
