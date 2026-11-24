@@ -19,7 +19,7 @@
   --bg:#090c13; --bg2:#0e1320; --surface:#121a2a; --surface-2:#1a2438; --line:#25314a;
   --fg:#eef2f8; --muted:#8a96ad; --dim:#5d6a82;
   --amber:#ffb21e; --amber-2:#ff8a00; --cyan:#2fd3ff; --cyan-2:#1a8cff;
-  --good:#38e08a; --warn:#ffcc4d; --bad:#ff5a5f; --ink:#090c13;
+  --good:#38e08a; --pro:#ff6fb5; --pro-2:#e0458f; --warn:#ffcc4d; --bad:#ff5a5f; --ink:#090c13;
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
   --r:16px; color-scheme:dark;
@@ -41,6 +41,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 h2{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:19px;margin:24px 0 10px;display:flex;align-items:center;gap:8px;text-wrap:balance}
 h2::before{content:"";width:4px;height:16px;border-radius:2px;background:var(--amber)}
 h2.cy::before{background:var(--cyan)}
+h2.pk::before{background:var(--pro)}
 h3{font-size:15px;margin:0;font-weight:700}
 .card{background:linear-gradient(180deg,var(--surface) 0%,var(--bg2) 100%);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .stack{display:flex;flex-direction:column;gap:10px}
@@ -53,9 +54,9 @@ h3{font-size:15px;margin:0;font-weight:700}
 .quote .q{font-family:var(--display);font-weight:700;font-style:italic;font-size:24px;line-height:1.15;letter-spacing:.005em;text-wrap:balance;position:relative}
 .quote .a{margin-top:8px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
 /* Rings */
-.rings{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.rings{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
 .ring{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 6px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
-.ring svg{width:84px;height:84px;display:block}
+.ring svg{width:100%;max-width:84px;height:auto;aspect-ratio:1;display:block}
 .ring .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .ring .sub{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
 .streak{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
@@ -99,6 +100,17 @@ label.f input{font-family:var(--display);font-size:22px;font-weight:700;text-ali
 /* Water */
 .water{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .water .big{font-size:52px;line-height:.9;color:var(--cyan)}
+.btn.pro{background:linear-gradient(180deg,var(--pro),var(--pro-2));border-color:transparent;color:var(--ink)}
+.pchips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.pchips .btn{height:48px;font-size:17px;font-family:var(--display);font-weight:800;letter-spacing:.02em;padding:0}
+.padd{display:flex;gap:6px}.padd input{flex:1;min-width:0}
+.plog{display:flex;flex-direction:column}
+.plog .pe{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.plog .pe:first-child{border-top:0}
+.plog .pe .g{font-family:var(--display);font-weight:800;font-size:20px;color:var(--pro);min-width:56px}
+.plog .pe .t{color:var(--muted);font-size:13px;flex:1}
+.plog .pe button{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:10px;width:36px;height:36px;font-size:18px;cursor:pointer}
+.bar.pk i{background:linear-gradient(90deg,var(--pro-2),var(--pro))}
 .bar{height:10px;border-radius:6px;background:var(--bg2);overflow:hidden;border:1px solid var(--line)}
 .bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--cyan-2),var(--cyan))}
 .bar.am i{background:linear-gradient(90deg,var(--amber-2),var(--amber))}
@@ -374,7 +386,11 @@ function blockWeek(k){var diff=Math.round((parseKey(k)-parseKey(BLOCK_START))/86
 function weekStart(k){return addDays(k,-((dow(k)+6)%7))}
 function emptyDay(k){return {date:k,checks:{},supps:{},water:0,woozy:null,headache:false,energy:null,weight:null,sauna:0,notes:"",workout:{done:false,sets:{}},cardio:[]}}
 function day(k){if(!state.days[k])state.days[k]=emptyDay(k);var d=state.days[k];
-  d.checks=d.checks||{};d.supps=d.supps||{};d.workout=d.workout||{done:false,sets:{}};d.workout.sets=d.workout.sets||{};d.cardio=d.cardio||[];return d}
+  d.checks=d.checks||{};d.supps=d.supps||{};d.workout=d.workout||{done:false,sets:{}};d.workout.sets=d.workout.sets||{};d.cardio=d.cardio||[];pSync(d);return d}
+function pLog(d){return ((d&&d.proteinLog)||[]).filter(function(x){return !x.del})}
+function pTotal(d){if(!d)return 0;if(!d.proteinLog)return n(d.protein)||0;return pLog(d).reduce(function(t,x){return t+(n(x.g)||0)},0)}
+function pSync(d){if(!d)return;if(!d.proteinLog&&n(d.protein)>0)d.proteinLog=[{id:"earlier",g:n(d.protein),t:null}];if(d.proteinLog){var t=pTotal(d);d.protein=t||null}}
+function nowHM(){var x=new Date();return (x.getHours()<10?"0":"")+x.getHours()+":"+(x.getMinutes()<10?"0":"")+x.getMinutes()}
 function peek(k){return state.days[k]||null}
 function n(v){var x=parseFloat(v);return isNaN(x)?null:x}
 function fmt(v,dp){return v==null?"–":(dp?(+v).toFixed(dp):String(Math.round(v*10)/10))}
@@ -407,13 +423,13 @@ function isEmptyV(v){return v==null||v===""||v===0||v===false||(Array.isArray(v)
 function mergeVal(a,b){
   if(Array.isArray(a)&&Array.isArray(b)){
     if(a.concat(b).every(function(x){return x&&typeof x==="object"&&x.id})){var out=a.slice(),ids={},srcs={};a.forEach(function(x){ids[x.id]=1;if(x.src)srcs[x.src]=1});
-      b.forEach(function(x){if(!ids[x.id]&&!(x.src&&srcs[x.src]))out.push(x)});return out}
+      b.forEach(function(x){if(ids[x.id]){if(x.del)for(var j=0;j<out.length;j++)if(out[j].id===x.id&&!out[j].del)out[j]=Object.assign({},out[j],{del:true})}else if(!(x.src&&srcs[x.src]))out.push(x)});return out}
     var n=Math.max(a.length,b.length),o=[];for(var i=0;i<n;i++){var x=a[i],y=b[i];
       if(isEmptyV(x))o.push(y!==undefined?y:x);else if(typeof x==="string"&&typeof y==="string"&&y.length>x.length&&y.indexOf(x)===0)o.push(y);else o.push(x)}return o}
   if(a&&b&&typeof a==="object"&&typeof b==="object"&&!Array.isArray(a)&&!Array.isArray(b)){var r={};Object.keys(a).forEach(function(k){r[k]=a[k]});
     Object.keys(b).forEach(function(k){r[k]=(k in a)?mergeVal(a[k],b[k]):b[k]});return r}
   if(isEmptyV(a)&&!isEmptyV(b))return b;return a}
-function mergeDay(ld,rd){if(!ld)return rd;if(!rd)return ld;var newer=(rd.u||0)>(ld.u||0)?rd:ld,older=newer===rd?ld:rd;var m=mergeVal(newer,older);m.u=Math.max(ld.u||0,rd.u||0);return m}
+function mergeDay(ld,rd){if(!ld)return rd;if(!rd)return ld;var newer=(rd.u||0)>(ld.u||0)?rd:ld,older=newer===rd?ld:rd;var m=mergeVal(newer,older);m.u=Math.max(ld.u||0,rd.u||0);pSync(m);return m}
 function mergeRemote(o){var changed=false;if(!o||!o.days)return false;
   Object.keys(o.days).forEach(function(k){if(!/^\d{4}-\d{2}-\d{2}$/.test(k))return;var ld=state.days[k],m=mergeDay(ld,o.days[k]);
     if(JSON.stringify(m)!==JSON.stringify(ld)){state.days[k]=m;changed=true}});
@@ -541,6 +557,7 @@ function viewToday(k){
   app.appendChild(h("div",{class:"rings"},[
     h("div",{class:"ring"},[ring(done/list.length,css("--amber"),done+"/"+list.length),h("div",{class:"lbl",text:"Plan"})]),
     h("div",{class:"ring"},[ring((d.water||0)/cfg.waterGoal,css("--cyan"),fmtB(d.water),"BOTTLES"),h("div",{class:"lbl",text:"Water"}),h("div",{class:"sub",text:"of "+fmtB(cfg.waterGoal)})]),
+    h("div",{class:"ring"},[ring(pTotal(d)/cfg.proteinGoal,css("--pro"),String(pTotal(d)),"GRAMS"),h("div",{class:"lbl",text:"Protein"}),h("div",{class:"sub",text:"of "+cfg.proteinGoal})]),
     h("div",{class:"ring"},[ring(mv/cfg.moveGoal,css("--good"),String(mv),"MIN"),h("div",{class:"lbl",text:"Cardio"}),h("div",{class:"sub",text:"of "+cfg.moveGoal})])]));
   // week strip
   var ws=weekStart(k),strip=h("div",{class:"week"});
@@ -567,14 +584,16 @@ function viewToday(k){
     h("div",{class:"bar"},[h("i",{style:"width:"+pct+"%"})]),
     h("div",{class:"small dim",text:"24 oz bottle. 1 by 9 AM, 2 by 11, 3 by 1 PM, 4 by 4 PM, 5 by 7 PM."})]));
 
+  app.appendChild(h("h2",{class:"pk",text:"Protein"}));
+  app.appendChild(proteinCard(k,d));
+
   app.appendChild(h("h2",{text:"How you feel"}));
   app.appendChild(h("div",{class:"card stack"},[
     h("h3",{text:"Woozy / lightheaded (0 = none)"}),seg(11,0,d.woozy,function(v){d.woozy=v;rerender()},woozyColor),
     h("h3",{text:"Energy",style:"margin-top:6px"}),seg(10,1,d.energy,function(v){d.energy=v;rerender()},function(){return css("--amber")}),
     h("div",{class:"row",style:"margin-top:6px"},[h("button",{class:"btn"+(d.headache?" on":""),"aria-pressed":d.headache?"true":"false",text:d.headache?"Headache today":"No headache",onclick:function(){d.headache=!d.headache;rerender()}})]),
     h("div",{class:"goalgrid"},[
-      h("label",{class:"f",for:"weight"},["Weight (lb)",h("input",{type:"number",id:"weight",inputmode:"decimal",step:"0.1",placeholder:"–",value:d.weight==null?"":String(d.weight),oninput:function(e){d.weight=n(e.target.value);save()}})]),
-      h("label",{class:"f",for:"protein"},["Protein (g)",h("input",{type:"number",id:"protein",inputmode:"numeric",placeholder:String(cfg.proteinGoal),value:d.protein==null?"":String(d.protein),oninput:function(e){d.protein=n(e.target.value);save()}})])]),
+      h("label",{class:"f",for:"weight"},["Weight (lb)",h("input",{type:"number",id:"weight",inputmode:"decimal",step:"0.1",placeholder:"–",value:d.weight==null?"":String(d.weight),oninput:function(e){d.weight=n(e.target.value);save()}})])]),
     h("label",{class:"f",for:"notes"},["Notes",h("textarea",{id:"notes",placeholder:"What you ate, when it hit, what helped",style:"font-family:var(--body);font-size:15px;text-align:left;font-weight:400",value:d.notes||"",oninput:function(e){d.notes=e.target.value;save()}})])]));
 
   app.appendChild(h("h2",{class:"cy",text:(dow(k)===0||dow(k)===6)?"Daily walk":"4:30 walk"}));
@@ -587,6 +606,24 @@ function viewToday(k){
   app.appendChild(h("h2",{text:"Supplements"}));
   app.appendChild(h("div",{class:"card"},SUPPS.map(function(i){return checkRow({b:i.b,s:i.s},!!d.supps[i.id],function(){d.supps[i.id]=!d.supps[i.id];rerender()})})));
 }
+
+// ---------- Protein ----------
+var P_CHIPS=[10,15,20,25,30,40,50,60];
+function proteinCard(k,d){var cfg=state.config,tot=pTotal(d),goal=cfg.proteinGoal||190,left=Math.round(goal-tot);
+  function add(g){g=Math.round(n(g)||0);if(g<=0||g>300)return;d.proteinLog=d.proteinLog||[];d.proteinLog.push({id:uid(),g:g,t:nowHM()});pSync(d);buzz(15);rerender();setStatus("Added "+g+" g protein")}
+  function del(id){(d.proteinLog||[]).forEach(function(x){if(x.id===id)x.del=true});pSync(d);rerender()}
+  var entries=pLog(d),inp=h("input",{type:"number",id:"pcustom",inputmode:"numeric",min:"1",max:"300",placeholder:"Other amount (g)",
+    onkeydown:function(e){if(e.key==="Enter"){e.preventDefault();var v=e.target.value;e.target.value="";e.target.blur();add(v)}}});
+  return h("div",{class:"card stack"},[
+    h("div",{class:"water"},[h("span",{class:"big num",style:"color:var(--pro)",text:String(tot)}),
+      h("span",{class:"muted",text:"of "+goal+" g · "+(left>0?left+" g to go":"goal hit ✓")}),
+      entries.length?h("button",{class:"btn",style:"margin-left:auto",text:"Undo","aria-label":"Undo last protein entry",onclick:function(){var all=d.proteinLog,lastAdded=null;for(var i=all.length-1;i>=0;i--)if(!all[i].del){lastAdded=all[i];break}if(lastAdded)del(lastAdded.id)}}):null]),
+    h("div",{class:"bar pk"},[h("i",{style:"width:"+Math.min(100,Math.round(tot/goal*100))+"%"})]),
+    h("div",{class:"pchips"},P_CHIPS.map(function(g){return h("button",{class:"btn",text:"+"+g,"aria-label":"Add "+g+" grams protein",onclick:function(){add(g)}})})),
+    h("div",{class:"padd"},[inp,h("button",{class:"btn pro",text:"Add",onclick:function(){var v=inp.value;inp.value="";add(v)}})]),
+    entries.length?h("div",{class:"plog"},entries.map(function(x){return h("div",{class:"pe"},[h("span",{class:"g",text:x.g+" g"}),h("span",{class:"t",text:x.t?fmtTime(x.t,true):"Logged earlier"}),
+      h("button",{text:"×","aria-label":"Delete "+x.g+" grams",onclick:function(){del(x.id)}})])})):h("div",{class:"small dim",text:"Nothing logged yet. Tap an amount when you eat."}),
+    h("div",{class:"small dim",text:"Rough guide: whey scoop ≈ 24 g · 4 oz chicken ≈ 35 g · 4 oz 90/10 beef ≈ 23 g · 3 oz deli turkey ≈ 15 g · 2 eggs ≈ 12 g."})])}
 
 // ---------- Cardio entry UI ----------
 function newEntry(kind,src,defaults){var e={id:uid(),kind:kind};if(src)e.src=src;if(defaults)for(var x in defaults)if(x!=="kind")e[x]=defaults[x];
@@ -788,6 +825,10 @@ function viewStats(){
   app.appendChild(h("h2",{class:"cy",text:"Cardio"}));
   app.appendChild(h("div",{class:"card stack"},[h("div",{class:"row",style:"justify-content:space-between"},[h("span",{class:"small muted",text:"Minutes per week"}),h("span",{class:"num",style:"color:var(--cyan);font-size:22px",text:wkMin+" min this week"})]),cardioChart()]));
 
+  var pdays=[],phit=0;for(var pi=6;pi>=0;pi--){var pd=peek(addDays(tk,-pi)),pv=pTotal(pd);if(pv>0){pdays.push(pv);if(pv>=cfg.proteinGoal)phit++}}
+  app.appendChild(h("h2",{class:"pk",text:"Protein"}));
+  app.appendChild(h("div",{class:"tiles"},[tile("7-day avg",pdays.length?String(Math.round(pdays.reduce(function(a,b){return a+b},0)/pdays.length)):"–","g",css("--pro")),tile("Goal",String(cfg.proteinGoal),"g"),tile("Days hit",phit+"/7","")]));
+
   app.appendChild(h("h2",{text:"Lift board"}));
   var board=h("div",{class:"card"});
   MAIN_LIFTS.forEach(function(L){var pts=keys.map(function(x){return {k:x,v:bestE1(state.days[x],L[0])}}).filter(function(p){return p.v});
@@ -939,7 +980,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="3.2";
+var BUILD="3.3";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
