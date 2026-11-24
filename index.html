@@ -985,7 +985,6 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
-if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
 var BUILD="3.4";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
