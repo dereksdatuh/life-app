@@ -698,8 +698,7 @@ function entryCard(k,d,e,removable){
     box.appendChild(h("button",{class:"btn ghost small",style:"height:30px;align-self:flex-start",text:e._edit?"Done changing":"Changed a speed?",onclick:function(){e._edit=!e._edit;if(!e._edit){render();return}ed.hidden=false;this.textContent="Done changing"}}));
     box.appendChild(h("div",{class:"small muted",text:"Intervals done"}));
     var ch=[];for(var r=1;r<=8;r++)(function(r){ch.push(h("button",{class:doneR===r?"on":"",text:String(r),"aria-label":r+" intervals",onclick:function(){e.rounds=doneR===r?null:r;rerender();if(e.rounds)setStatus("Sprint 8 logged: "+r+" intervals")}}))})(r);
-    box.appendChild(h("div",{class:"kinds eight"},ch));
-    box.appendChild(h("button",{class:"btn amber block",text:"Start Sprint 8 timer",onclick:function(){openTimer(k,e)}}))}
+    box.appendChild(h("div",{class:"kinds eight"},ch))}
   else if(e.kind==="bike"){box.appendChild(h("div",{class:"fields"},[field("Minutes",e,"min","1"),field("Level",e,"level","1"),field("RPE 1-10",e,"rpe","1")]))}
   if(e.kind==="walk"||e.kind==="run")box.appendChild(h("div",{class:"fields"},[field("RPE 1-10",e,"rpe","1"),field("Avg HR",e,"hr","1"),h("div")]));
   box.appendChild(calc);
@@ -1029,7 +1028,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="3.5";
+var BUILD="3.6";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
