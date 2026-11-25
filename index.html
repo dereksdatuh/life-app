@@ -343,7 +343,7 @@ var WORKOUTS={
   {id:"sprint8",n:"Sprint 8",sr:"8 × 30s / 90s",cardio:{kind:"sprint8"}},
   {id:"medball",n:"Med ball rotational throw",sr:"3 × 8/side",sets:3},
   {id:"pallof",n:"Pallof press",sr:"3 × 10/side",sets:3},
-  {id:"farmer",n:"Farmer carry",sr:"4 × 40 yd",sets:4},
+  {id:"farmer",n:"Farmer hold",sr:"4 × 30-45 sec",sets:4},
   {id:"cooldown",n:"Cooldown walk",sr:"10 min",cardio:{kind:"walk",min:10,incline:2,speed:3.0}}]},
  4:{name:"Upper · Pull",sauna:true,ex:[
   {id:"pullup",n:"Pull-up or lat pulldown",sr:"4 × 8",sets:4},
@@ -767,13 +767,14 @@ function viewTrain(k){
     if(ex.main&&(cur||last&&last.e1))metaKids.push(h("span",{style:"color:var(--amber)",text:"Est. max "+Math.round(cur||last.e1)}));
     var grid=h("div",{class:"sets"});
     var nSets=Math.max(ex.sets,cc&&cc.sets||0);
+    var timed=/sec/i.test(ex.sr);
     for(var i=0;i<nSets;i++)(function(i){var cur=splitSet(sets[i]),prev=splitSet(last&&last.sets[i]);if(cc&&cc.w&&i<cc.sets)prev={w:String(cc.w),r:String(cc.reps)};
       var row=h("div",{class:"setrow"+(cur.w&&cur.r?" ok":"")});
       var wi=h("input",{type:"text",inputmode:"decimal","aria-label":ex.n+" set "+(i+1)+" weight",placeholder:(prev.w||ex.start&&String(ex.start).match(/^\d+/)&&String(ex.start).match(/^\d+/)[0]||"lb")+"",value:cur.w});
-      var ri=h("input",{type:"text",inputmode:"numeric","aria-label":ex.n+" set "+(i+1)+" reps",placeholder:prev.r||"reps",value:cur.r});
+      var ri=h("input",{type:"text",inputmode:"numeric","aria-label":ex.n+" set "+(i+1)+(timed?" seconds":" reps"),placeholder:prev.r||(timed?"sec":"reps"),value:cur.r});
       function upd(){var w=wi.value.trim(),rr=ri.value.trim(),arr=(d.workout.sets[ex.id]||[]).slice();while(arr.length<nSets)arr.push("");arr[i]=(w||rr)?w+"x"+rr:"";d.workout.sets[ex.id]=arr;row.classList.toggle("ok",!!(w&&rr));save()}
       wi.oninput=upd;ri.oninput=upd;
-      row.appendChild(h("span",{class:"sn",text:String(i+1)}));row.appendChild(wi);row.appendChild(h("span",{class:"x",text:"lb ×"}));row.appendChild(ri);
+      row.appendChild(h("span",{class:"sn",text:String(i+1)}));row.appendChild(wi);row.appendChild(h("span",{class:"x",text:timed?"lb for":"lb ×"}));row.appendChild(ri);
       grid.appendChild(row)})(i);
     d.workout.notes=d.workout.notes||{};var lastNote=lastExNote(ex.id,k);
     var ni=h("input",{type:"text",class:"exnote","aria-label":ex.n+" note",placeholder:lastNote?"Last note: "+lastNote:"Note (form, pain, felt easy…)",value:d.workout.notes[ex.id]||"",oninput:function(e){d.workout.notes[ex.id]=e.target.value;save()}});
@@ -1028,7 +1029,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="3.6";
+var BUILD="3.7";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
