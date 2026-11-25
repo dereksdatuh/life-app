@@ -146,6 +146,8 @@ label.f input{font-family:var(--display);font-size:22px;font-weight:700;text-ali
 .kinds button{border:1px solid var(--line);background:var(--bg2);color:var(--muted);border-radius:10px;height:36px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;padding:0}
 .kinds button.on{background:color-mix(in srgb,var(--cyan) 18%,transparent);border-color:var(--cyan);color:var(--cyan)}
 .centry{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--bg2)}
+.kinds.four{grid-template-columns:repeat(4,1fr)}.kinds.eight{grid-template-columns:repeat(8,1fr)}.kinds.eight button{height:42px;font-size:16px;font-family:var(--display);font-weight:800}
+.s8sum{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}.s8sum b{color:var(--amber);font-weight:700}.s8sum .rc{color:var(--cyan)}
 /* Charts */
 .chart{width:100%;overflow-x:auto}
 .chart svg{display:block;width:100%;height:auto}
@@ -369,7 +371,14 @@ var CHECKUP=[
  {id:"dentist",b:"Dentist cleaning",s:"About 10 years since the last one"}
 ];
 var DEFAULT_CONFIG={liftTime:"06:30",startWeight:225,goalWeight:187,waterGoal:120,proteinGoal:190,moveGoal:30,checkup:{},
-  sprint:{warm:180,work:30,rest:90,cool:240,rounds:8,mode:"treadmill",sprintSpeed:8.0,sprintIncline:3,recSpeed:3.0,warmSpeed:3.5}};
+  sprint:{warm:180,work:30,rest:90,cool:150,rounds:8,mode:"treadmill",level:6,sprintSpeed:5.5,sprintIncline:4,recSpeed:2,warmSpeed:3.5}};
+// Matrix / Johnson Health Tech Sprint 8 levels: [sprints 1-2 mph, sprints 3-4, sprints 5-8, sprint incline %, recovery mph]. Recovery incline 0.
+// 3:00 warm-up, 8 × 0:30 sprints with 7 × 1:30 recoveries, 2:30 cooldown = 20 min.
+var S8_LEVELS=[[3.2,3.5,3.7,3,1.5],[3.7,4.0,4.2,3,2.0],[4.2,4.4,4.6,3,2.2],[4.6,4.8,5.0,3,2.5],[4.9,5.1,5.3,3,3.0],
+ [5.0,5.2,5.5,4,3.5],[5.3,5.5,5.8,4,3.5],[5.8,6.0,6.3,4,3.5],[6.0,6.3,6.5,4,4.0],[6.5,6.7,7.0,4,4.5],
+ [7.0,7.2,7.5,5,5.0],[7.5,7.7,8.0,5,5.5],[8.0,8.2,8.5,5,5.5],[8.5,8.7,9.0,5,6.0],[9.0,9.2,9.5,5,6.0],
+ [9.5,9.7,10.0,6,6.0],[10.0,10.2,10.5,6,6.5],[10.5,10.7,11.0,6,6.5],[11.0,11.2,11.5,6,7.0],[11.5,11.7,12.0,6,7.0]];
+var S8_GROUPS=[["beginner","Beginner",1],["intermediate","Intermediate",6],["advanced","Advanced",11],["elite","Elite",16]];
 
 // ================= State & helpers =================
 var STORE_KEY="lifelog.v1";
@@ -395,6 +404,26 @@ function peek(k){return state.days[k]||null}
 function n(v){var x=parseFloat(v);return isNaN(x)?null:x}
 function fmt(v,dp){return v==null?"–":(dp?(+v).toFixed(dp):String(Math.round(v*10)/10))}
 function uid(){return Math.random().toString(36).slice(2,9)}
+// ---- Sprint 8 (v3.5): pick a Matrix level, numbers fill in, log how many intervals you did ----
+function s8Group(lv){return S8_GROUPS[Math.min(3,Math.floor(((lv||6)-1)/5))]}
+function s8LevelName(lv){return s8Group(lv)[1]+" "+lv}
+function s8Last(level,before){var keys=Object.keys(state.days).filter(function(x){return !before||x<before}).sort().reverse();
+  for(var i=0;i<keys.length;i++){var c=(state.days[keys[i]].cardio||[]).filter(function(e){return e.kind==="sprint8"&&n(e.rounds)&&e.level&&(!level||e.level===level)})[0];if(c)return {date:keys[i],e:c}}return null}
+function s8Apply(e,lv,before){var t=S8_LEVELS[lv-1],last=s8Last(lv,before);e.level=lv;e.prog=s8Group(lv)[0];e.mode="treadmill";
+  e.lo=t[0];e.mid=t[1];e.speed=t[2];e.incline=t[3];e.recSpeed=t[4];e.recIncline=0;e.work=30;e.rest=90;
+  var cu=(state.config.sprint.custom||{})[lv];if(cu)Object.assign(e,cu)}
+var S8_F=["lo","mid","speed","incline","recSpeed","recIncline"];
+// Remember speeds you changed at a level so it fills in that way next time (synced with your settings).
+function s8Remember(e){if(!e.level)return;var t=S8_LEVELS[e.level-1],base=[t[0],t[1],t[2],t[3],t[4],0],diff={},any=false;
+  S8_F.forEach(function(f,i){var v=n(e[f]);if(v!=null&&v!==base[i]){diff[f]=v;any=true}});
+  var sp=state.config.sprint;sp.custom=sp.custom||{};var old=JSON.stringify(sp.custom[e.level]||null),nw=JSON.stringify(any?diff:null);
+  if(old!==nw){if(any)sp.custom[e.level]=diff;else delete sp.custom[e.level];lsSet("lifelog.configAt",new Date().toISOString())}}
+function s8Default(before){var l=s8Last(null,before);return l?l.e.level:(state.config.sprint.level||6)}
+function s8SpeedAt(e,i){var sp=state.config.sprint;return i<=2?(n(e.lo)||n(e.speed)||sp.sprintSpeed):i<=4?(n(e.mid)||n(e.speed)||sp.sprintSpeed):(n(e.speed)||sp.sprintSpeed)}
+function s8Speed(e){var a=s8SpeedAt(e,1),b=s8SpeedAt(e,8);return a!==b?a.toFixed(1)+"–"+b.toFixed(1):String(b)}
+function fixCfg(){var sp=state.config.sprint;if(!sp.s35){Object.assign(sp,{level:6,sprintSpeed:5.5,sprintIncline:4,recSpeed:2,cool:150,s35:1});sp.custom=sp.custom||{};if(!sp.custom[6])sp.custom[6]={recSpeed:2}}
+  var d=state.days["2026-11-25"],e=d&&(d.cardio||[]).filter(function(x){return x.kind==="sprint8"&&x.src})[0];
+  if(e&&!e.level&&!n(e.rounds)){s8Apply(e,6);d.u=Date.now()}}
 function h(tag,attrs,kids){var el=document.createElement(tag);
   if(attrs)for(var a in attrs){var v=attrs[a];if(v==null||v===false)continue;
     if(a==="class")el.className=v;else if(a==="text")el.textContent=v;else if(a.slice(0,2)==="on")el.addEventListener(a.slice(2),v);
@@ -434,7 +463,7 @@ function mergeRemote(o){var changed=false;if(!o||!o.days)return false;
   Object.keys(o.days).forEach(function(k){if(!/^\d{4}-\d{2}-\d{2}$/.test(k))return;var ld=state.days[k],m=mergeDay(ld,o.days[k]);
     if(JSON.stringify(m)!==JSON.stringify(ld)){state.days[k]=m;changed=true}});
   if(o.config&&o.configAt&&o.configAt>(lsGet("lifelog.configAt")||"")){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});lsSet("lifelog.configAt",o.configAt);changed=true}
-  return changed}
+  fixCfg();return changed}
 function syncPull(cfg){return ghApi(cfg,"GET").then(function(r){if(r.status===404){syncSha=null;return null}if(r.status===401||r.status===403)throw new Error("auth");if(!r.ok)throw new Error("http "+r.status);return r.json()})
   .then(function(j){if(!j)return false;syncSha=j.sha;var o=JSON.parse(b64dec(j.content||""));return mergeRemote(o)})}
 function syncPush(cfg,retry){var body={v:2,savedAt:new Date().toISOString(),configAt:lsGet("lifelog.configAt")||"",config:state.config,days:state.days};
@@ -452,7 +481,7 @@ window.addEventListener("pagehide",flushNow);
 document.addEventListener("visibilitychange",function(){if(document.hidden)flushNow();else{if(state.date!==todayKey()&&!state.pinned){state.date=todayKey();render()}syncNow()}});
 function loadLocal(){try{var raw=localStorage.getItem(STORE_KEY);if(!raw)return;var o=JSON.parse(raw);
   if(o&&o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});if(!state.config.w5){state.config.waterGoal=120;state.config.w5=1}}
-  if(o&&o.days)state.days=o.days}catch(e){setStatus("Couldn't read saved data.",true)}}
+  if(o&&o.days)state.days=o.days}catch(e){setStatus("Couldn't read saved data.",true)}fixCfg()}
 function exportBackup(){var data=JSON.stringify({v:2,exportedAt:new Date().toISOString(),config:state.config,days:state.days},null,1);
   var blob=new Blob([data],{type:"application/json"}),name="life-log-backup-"+todayKey()+".json",file=null;
   try{file=new File([blob],name,{type:"application/json"})}catch(e){}
@@ -463,7 +492,7 @@ function importBackup(file){var r=new FileReader();r.onload=function(){importTex
 function applyBackup(o){{
   Object.keys(o.days).forEach(function(k){if(/^\d{4}-\d{2}-\d{2}$/.test(k))state.days[k]=o.days[k]});
   if(o.config){state.config=Object.assign(clone(DEFAULT_CONFIG),o.config);state.config.sprint=Object.assign(clone(DEFAULT_CONFIG.sprint),o.config.sprint||{});if(!state.config.w5){state.config.waterGoal=120;state.config.w5=1}}
-  Object.keys(o.days).forEach(function(k){if(state.days[k])state.days[k].u=Date.now()});persist();render();setStatus("Backup restored ✓");try{alertBox("Restored "+Object.keys(o.days).length+" days")}catch(e){}}}
+  Object.keys(o.days).forEach(function(k){if(state.days[k])state.days[k].u=Date.now()});fixCfg();persist();render();setStatus("Backup restored ✓");try{alertBox("Restored "+Object.keys(o.days).length+" days")}catch(e){}}}
 function alertBox(m){var el=document.getElementById("status");el.textContent=m;el.className="status"}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
@@ -474,11 +503,12 @@ function fmtTime(t,ampm){var m=String(t||"").match(/^(\d{1,2}):(\d{2})/);if(!m)r
 function scheduleFor(k){if(dow(k)===0||dow(k)===6)return WEEKEND_SCHEDULE;var lt=fmtTime(liftTime(k));return WEEKDAY_SCHEDULE.map(function(i){return i.id==="gym"?Object.assign({},i,{t:lt}):i})}
 function planPct(k){var d=peek(k);if(!d)return 0;var l=scheduleFor(k);return l.filter(function(i){return d.checks&&d.checks[i.id]}).length/l.length}
 function cardioMin(d){if(!d)return 0;var w=d.walk&&d.walk.done?(n(d.walk.min)||0):0;return w+(d.cardio||[]).reduce(function(t,c){return t+(cardioMinutes(c)||0)},0)}
-function cardioMinutes(c){if(c.kind==="sprint8"){var sp=state.config.sprint,r=n(c.rounds)||0;return r?Math.round((sp.warm+r*(sp.work+sp.rest)+sp.cool)/60):(n(c.min)||0)}
+function cardioMinutes(c){if(c.kind==="sprint8"){var sp=state.config.sprint,r=n(c.rounds)||0;if(!r)return n(c.min)||0;if(!c.level)return Math.round((sp.warm+r*(sp.work+sp.rest)+sp.cool)/60);return Math.round((180+r*30+Math.max(0,r-1)*90+150)/60)}
   if(c.kind==="intervals"){var R=n(c.rounds)||0,w=n(c.work)||0,rs=n(c.rest)||0;return R?Math.round(R*(w+rs)/60):(n(c.min)||0)}return n(c.min)||0}
 function cardioDist(c){if(c.kind==="walk"||c.kind==="run"){var m=n(c.min),sp=n(c.speed);return m&&sp?sp*m/60:null}
   if(c.kind==="intervals"){var R=n(c.rounds),w=n(c.work),rs=n(c.rest),ws=n(c.speed),rsp=n(c.recSpeed);if(!R)return null;return ((ws||0)*(w||0)+(rsp||0)*(rs||0))*R/3600}
-  if(c.kind==="sprint8"){var sp=state.config.sprint,r=n(c.rounds);if(!r)return null;return ((n(c.speed)||sp.sprintSpeed)*sp.work+(n(c.recSpeed)||sp.recSpeed)*sp.rest)*r/3600}return null}
+  if(c.kind==="sprint8"){var sp=state.config.sprint,r=n(c.rounds);if(!r||c.mode==="bike")return null;if(!c.level)return ((n(c.speed)||sp.sprintSpeed)*sp.work+(n(c.recSpeed)||sp.recSpeed)*sp.rest)*r/3600;
+    var mi=0;for(var i=1;i<=r;i++)mi+=s8SpeedAt(c,i)*30/3600;return mi+(n(c.recSpeed)||0)*Math.max(0,r-1)*90/3600}return null}
 function dayScore(k){var d=peek(k);if(!d)return 0;var cfg=state.config;
   var parts=[planPct(k),Math.min(1,(d.water||0)/cfg.waterGoal),Math.min(1,cardioMin(d)/cfg.moveGoal),(d.workout&&d.workout.done)||dow(k)===0?1:0];
   return parts.reduce(function(a,b){return a+b},0)/parts.length}
@@ -627,7 +657,7 @@ function proteinCard(k,d){var cfg=state.config,tot=pTotal(d),goal=cfg.proteinGoa
 
 // ---------- Cardio entry UI ----------
 function newEntry(kind,src,defaults){var e={id:uid(),kind:kind};if(src)e.src=src;if(defaults)for(var x in defaults)if(x!=="kind")e[x]=defaults[x];
-  if(kind==="sprint8"){var sp=state.config.sprint;e.mode=sp.mode;e.speed=sp.sprintSpeed;e.incline=sp.sprintIncline;e.recSpeed=sp.recSpeed;e.rounds=null}
+  if(kind==="sprint8"){s8Apply(e,s8Default());e.rounds=null}
   if(kind==="intervals"){e.rounds=8;e.work=60;e.rest=60;e.speed=7.0;e.incline=1;e.recSpeed=3.5}
   if(kind==="run"&&!defaults){e.min=20;e.speed=6.0;e.incline=1}
   if(kind==="walk"&&!defaults){e.min=20;e.speed=3.2;e.incline=5}
@@ -653,9 +683,22 @@ function entryCard(k,d,e,removable){
   if(e.kind==="walk"||e.kind==="run"){box.appendChild(h("div",{class:"fields"},[field("Minutes",e,"min","1"),field("Incline %",e,"incline","0.5"),field("Speed mph",e,"speed","0.1")]))}
   else if(e.kind==="intervals"){box.appendChild(h("div",{class:"fields four"},[field("Rounds",e,"rounds","1"),field("Work sec",e,"work","5"),field("Rest sec",e,"rest","5"),field("Incline %",e,"incline","0.5")]));
     box.appendChild(h("div",{class:"fields"},[field("Work mph",e,"speed","0.1"),field("Rest mph",e,"recSpeed","0.1"),field("RPE 1-10",e,"rpe","1")]))}
-  else if(e.kind==="sprint8"){var sp=state.config.sprint;
-    box.appendChild(h("div",{class:"row"},["treadmill","bike"].map(function(m){return h("button",{class:"btn"+((e.mode||sp.mode)===m?" on":""),style:"height:34px",text:m==="treadmill"?"Treadmill":"Bike",onclick:function(){e.mode=m;rerender()}})})));
-    box.appendChild(h("div",{class:"fields four"},[field("Sprints",e,"rounds","1","0-8"),field("Sprint mph",e,"speed","0.1"),field("Incline %",e,"incline","0.5"),field("Recover mph",e,"recSpeed","0.1")]));
+  else if(e.kind==="sprint8"){if(!e.level){s8Apply(e,s8Default(k))}s8Remember(e);
+    var lv=e.level,grp=s8Group(lv),doneR=n(e.rounds);
+    box.appendChild(h("div",{class:"kinds four"},S8_GROUPS.map(function(g){return h("button",{class:grp[0]===g[0]?"on":"",text:g[1],onclick:function(){if(grp[0]!==g[0]){s8Remember(e);var pick=g[2];for(var x=g[2];x<g[2]+5;x++)if(s8Last(x,k))pick=x;s8Apply(e,pick,k)}rerender()}})})));
+    var lvs=[];for(var x=grp[2];x<grp[2]+5;x++)(function(x){lvs.push(h("button",{class:x===lv?"on":"",text:"Level "+x,"aria-label":s8LevelName(x),onclick:function(){if(x!==lv){s8Remember(e);s8Apply(e,x,k)}rerender()}}))})(x);
+    box.appendChild(h("div",{class:"kinds"},lvs));
+    box.appendChild(h("div",{class:"s8sum"},[h("b",{text:"Sprints"}),h("span",{text:"0:30 · "+s8SpeedAt(e,1).toFixed(1)+" → "+s8SpeedAt(e,3).toFixed(1)+" → "+s8SpeedAt(e,5).toFixed(1)+" mph · "+(n(e.incline)||0)+"%"}),
+      h("b",{class:"rc",text:"Recovery"}),h("span",{text:"1:30 · "+(n(e.recSpeed)||0)+" mph · "+(n(e.recIncline)||0)+"%"})]));
+    var ed=h("div",{class:"stack",hidden:!e._edit});
+    ed.appendChild(h("div",{class:"fields"},[field("Sprints 1-2 mph",e,"lo","0.1"),field("3-4 mph",e,"mid","0.1"),field("5-8 mph",e,"speed","0.1")]));
+    ed.appendChild(h("div",{class:"fields"},[field("Sprint incline %",e,"incline","0.5"),field("Recover mph",e,"recSpeed","0.1"),field("Recover incline %",e,"recIncline","0.5")]));
+    ed.appendChild(h("div",{class:"small dim",text:"Level "+lv+" on the Matrix is "+S8_LEVELS[lv-1].slice(0,3).join(" / ")+" mph at "+S8_LEVELS[lv-1][3]+"%, recovery "+S8_LEVELS[lv-1][4]+" mph. What you change here fills in next time at this level."}));
+    box.appendChild(ed);
+    box.appendChild(h("button",{class:"btn ghost small",style:"height:30px;align-self:flex-start",text:e._edit?"Done changing":"Changed a speed?",onclick:function(){e._edit=!e._edit;if(!e._edit){render();return}ed.hidden=false;this.textContent="Done changing"}}));
+    box.appendChild(h("div",{class:"small muted",text:"Intervals done"}));
+    var ch=[];for(var r=1;r<=8;r++)(function(r){ch.push(h("button",{class:doneR===r?"on":"",text:String(r),"aria-label":r+" intervals",onclick:function(){e.rounds=doneR===r?null:r;rerender();if(e.rounds)setStatus("Sprint 8 logged: "+r+" intervals")}}))})(r);
+    box.appendChild(h("div",{class:"kinds eight"},ch));
     box.appendChild(h("button",{class:"btn amber block",text:"Start Sprint 8 timer",onclick:function(){openTimer(k,e)}}))}
   else if(e.kind==="bike"){box.appendChild(h("div",{class:"fields"},[field("Minutes",e,"min","1"),field("Level",e,"level","1"),field("RPE 1-10",e,"rpe","1")]))}
   if(e.kind==="walk"||e.kind==="run")box.appendChild(h("div",{class:"fields"},[field("RPE 1-10",e,"rpe","1"),field("Avg HR",e,"hr","1"),h("div")]));
@@ -712,9 +755,10 @@ function viewTrain(k){
   w.ex.forEach(function(ex){
     if(ex.cardio){
       var e=d.cardio.filter(function(x){return x.src===ex.id})[0];
-      if(!e){e=newEntry(ex.cardio.kind,ex.id,ex.cardio);if(ex.cardio.kind==="sprint8"){e.rounds=null}d.cardio.push(e)}
+      if(!e){e=newEntry(ex.cardio.kind,ex.id,ex.cardio);if(ex.cardio.kind==="sprint8"){s8Apply(e,s8Default(k),k);e.rounds=null}d.cardio.push(e)}
       var lc=lastCardio(ex.id,k);
-      var meta=ex.cardio.kind==="sprint8"?"Target this week: "+sprintRoundsFor(wk)+" sprints"+(wk<=2?" at about 80%":" all-out"):(lc?"Last: "+(lc.e.min||"–")+" min @ "+(lc.e.incline||0)+"% / "+(lc.e.speed||"–")+" mph":"Target: "+ex.cardio.min+" min @ "+ex.cardio.incline+"% / "+ex.cardio.speed+" mph");
+      var s8l=ex.cardio.kind==="sprint8"?s8Last(null,k):null;
+      var meta=ex.cardio.kind==="sprint8"?(s8l?"Last: "+prettyDate(s8l.date,{month:"short",day:"numeric"})+" · "+s8LevelName(s8l.e.level)+" · "+s8l.e.rounds+" intervals":"Pick your Matrix level, then tap how many intervals you did."):(lc?"Last: "+(lc.e.min||"–")+" min @ "+(lc.e.incline||0)+"% / "+(lc.e.speed||"–")+" mph":"Target: "+ex.cardio.min+" min @ "+ex.cardio.incline+"% / "+ex.cardio.speed+" mph");
       card.appendChild(h("div",{class:"ex cardio"},[h("div",{class:"head"},[h("h3",{text:ex.n}),h("span",{class:"sr",text:ex.sr})]),h("div",{class:"meta",text:meta}),h("div",{style:"margin-top:10px"},[entryCard(k,d,e,false)])]));
       return}
     var sets=d.workout.sets[ex.id]||[],last=lastLogged(ex.id,k),cur=bestE1(d,ex.id);
@@ -772,11 +816,11 @@ var T=null;
 function beep(freq,ms){try{var ctx=T&&T.ctx;if(!ctx)return;var o=ctx.createOscillator(),g=ctx.createGain();o.type="square";o.frequency.value=freq;g.gain.value=0.15;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+ms/1000)}catch(e){}}
 function buzz(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
 function openTimer(k,entry){
-  var sp=state.config.sprint,wk=blockWeek(k),rounds=n(entry.rounds)||sprintRoundsFor(wk);
-  var phases=[{t:"Warm-up",dur:sp.warm,cls:"",tgt:"Jog "+sp.warmSpeed+" mph"}];
-  for(var i=1;i<=rounds;i++){phases.push({t:"Sprint "+i,dur:sp.work,cls:"sprint",round:i,tgt:(entry.mode||sp.mode)==="bike"?"All out":(n(entry.speed)||sp.sprintSpeed)+" mph · "+(n(entry.incline)||sp.sprintIncline)+"%"});
-    phases.push({t:"Recover",dur:sp.rest,cls:"recover",round:i,tgt:(entry.mode||sp.mode)==="bike"?"Easy spin":(n(entry.recSpeed)||sp.recSpeed)+" mph walk"})}
-  phases.push({t:"Cooldown",dur:sp.cool,cls:"",tgt:"Easy walk, breathe slow"});
+  var sp=state.config.sprint,rounds=8,lvd=!!entry.level;
+  var phases=[{t:"Warm-up",dur:lvd?180:sp.warm,cls:"",tgt:"Easy walk, "+sp.warmSpeed+" mph"}];
+  for(var i=1;i<=rounds;i++){phases.push({t:"Sprint "+i,dur:30,cls:"sprint",round:i,tgt:(entry.mode||sp.mode)==="bike"?"All out":s8SpeedAt(entry,i)+" mph · "+(n(entry.incline)||0)+"%"});
+    if(i<rounds)phases.push({t:"Recover",dur:90,cls:"recover",round:i,tgt:(entry.mode||sp.mode)==="bike"?"Easy spin":(n(entry.recSpeed)||sp.recSpeed)+" mph · "+(n(entry.recIncline)||0)+"%"})}
+  phases.push({t:"Cooldown",dur:150,cls:"",tgt:"Easy walk, "+(n(entry.recSpeed)||sp.recSpeed)+" mph"});
   var ctx=null;try{ctx=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}
   T={k:k,entry:entry,phases:phases,i:0,left:phases[0].dur,running:false,rounds:rounds,completed:0,ctx:ctx,wake:null,last:0};
   try{navigator.wakeLock&&navigator.wakeLock.request("screen").then(function(l){T&&(T.wake=l)}).catch(function(){})}catch(e){}
@@ -920,14 +964,13 @@ function viewPlan(){
   app.appendChild(h("h2",{class:"cy",text:"Sprint 8 guide"}));
   var g=h("div",{class:"card guide small"});
   g.appendChild(h("p",{text:"Sprint 8 is a short interval workout created by trainer Phil Campbell: eight 30-second all-out sprints, each followed by 90 seconds of easy recovery. With a warm-up and cooldown, it takes about 20 minutes."}));
-  [["3:00","Warm-up: easy jog or brisk walk, around "+sp.warmSpeed+" mph."],["0:30 × 8","Sprint as hard as you safely can. Treadmill around "+sp.sprintSpeed+" mph at "+sp.sprintIncline+"% to start, or all out on a bike."],["1:30 × 8","Recover: walk about "+sp.recSpeed+" mph or spin easy. Breathe in through your nose, long exhale."],["4:00","Cooldown walk until your breathing is normal."]].forEach(function(r){g.appendChild(h("div",{class:"step"},[h("span",{class:"num",text:r[0]}),h("span",{text:r[1]})]))});
+  [["3:00","Warm-up: easy walk."],["0:30 × 8","Sprint. On the Matrix, pick a level and the speed steps up at sprints 3 and 5. Levels 1-5 Beginner, 6-10 Intermediate, 11-15 Advanced, 16-20 Elite. Intermediate 6 is 5.0 → 5.2 → 5.5 mph at 4%."],["1:30 × 7","Recover between sprints at 0% incline. Breathe in through your nose, long exhale."],["2:30","Cooldown walk. The whole thing is 20 minutes."]].forEach(function(r){g.appendChild(h("div",{class:"step"},[h("span",{class:"num",text:r[0]}),h("span",{text:r[1]})]))});
   g.appendChild(h("p",{style:"margin-top:10px",text:"Why it works: hard, short efforts push your heart and lungs much harder than steady cardio, so you build fitness in a third of the time. Your body also keeps burning a bit more for a few hours afterward, and short all-out work raises growth hormone for a while. That fat-loss edge is real but modest. Your diet still does most of the cutting."}));
   g.appendChild(h("b",{text:"Your ramp-up"}));
-  g.appendChild(h("ul",null,[h("li",{text:"Test week and week 1: 4 sprints at about 80%."}),h("li",{text:"Weeks 2-4: add one sprint a week, 5 → 6 → 7."}),h("li",{text:"Week 5 on: all 8, all out. Once a week on Wednesday, with a second session on Saturday from week 4 if you feel good."}),h("li",{text:"Raise sprint speed by 0.2-0.5 mph when the last sprint feels too easy."})]));
+  g.appendChild(h("ul",null,[h("li",{text:"Test week and week 1: 4 sprints at about 80%."}),h("li",{text:"Weeks 2-4: add one sprint a week, 5 → 6 → 7."}),h("li",{text:"Week 5 on: all 8, all out. Once a week on Wednesday, with a second session on Saturday from week 4 if you feel good."}),h("li",{text:"Move up one level when all 8 sprints at your level feel doable."})]));
   g.appendChild(h("b",{text:"Safety for you"}));
   g.appendChild(h("ul",null,[h("li",{text:"Never on an empty stomach: banana plus electrolytes first."}),h("li",{text:"The treadmill belt takes 10-15 seconds to speed up. Start raising speed before the beep, or use a bike or air bike, which hit full effort instantly."}),
     h("li",{text:"Hold the rails stepping on and off. Never jump off a moving belt; straddle the side rails if you need to."}),h("li",{text:"Skip sprints on a woozy day (6 or higher). Stop and sit if you get dizzy, your vision dims or your chest hurts."}),h("li",{text:"Keep at least a day between sprint days and heavy leg days."})]));
-  g.appendChild(h("div",{class:"goalgrid",style:"margin-top:8px"},[num("Sprint mph",sp,"sprintSpeed","s1","0.1"),num("Sprint incline %",sp,"sprintIncline","s2","0.5"),num("Recover mph",sp,"recSpeed","s3","0.1"),num("Warm-up mph",sp,"warmSpeed","s4","0.1")]));
   app.appendChild(g);
 
   app.appendChild(h("h2",{text:"Checkup list"}));cfg.checkup=cfg.checkup||{};
@@ -986,7 +1029,7 @@ var v0=lsGet("view");if(v0==="workout")v0="train";if(v0==="progress")v0="stats";
 // ================= Boot =================
 loadLocal();render();setTimeout(function(){syncNow()},800);
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
-var BUILD="3.4";
+var BUILD="3.5";
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).catch(function(){})});
 var lastUpd=0;function checkUpdate(force){var now=Date.now();if(!force&&now-lastUpd<30000)return;lastUpd=now;
   fetch("version.json?t="+now,{cache:"no-store"}).then(function(r){return r.json()}).then(function(v){if(v&&v.build&&v.build!==BUILD){var tried=null;try{tried=sessionStorage.getItem("updTried")}catch(e){}if(tried===v.build&&!force)return;try{sessionStorage.setItem("updTried",v.build)}catch(e){}try{persist()}catch(e){}
